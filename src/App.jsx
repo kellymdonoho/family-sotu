@@ -7,8 +7,8 @@ import { Heart, Bell, BellOff } from "lucide-react";
 
 // Add your emails here to restrict access (leave empty to allow any Google account)
 const ALLOWED_EMAILS = [
-  // "kelly@gmail.com",
-  // "kevin@gmail.com",
+  // "kellymdonoho@gmail.com",
+  // "kdonoho1@gmail.com",
 ];
 
 // Get this from Firebase Console > Project Settings > Cloud Messaging > Web Push certificates > Key pair
