@@ -150,7 +150,7 @@ function SectionHeader({ icon:Icon, title, count }) {
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function FamilySOUnion({ db, user, onSignOut, accessToken, calendarId, onSyncCalendar }) {
+export default function FamilySOUnion({ db, user, onSignOut }) {
   const today = useMemo(()=>new Date(),[]);
   const monthIdx = today.getMonth();
   const monthKey = monthIdx+"-"+today.getFullYear();
@@ -180,39 +180,18 @@ export default function FamilySOUnion({ db, user, onSignOut, accessToken, calend
   const [calLoading, setCalLoading]       = useState(false);
   const [nextDateNight, setNextDateNight] = useState(null);
 
-  // Fetch calendar events when access token is available
+  // Fetch calendar from Vercel serverless function (reads iCal privately server-side)
   useEffect(()=>{
-    if(!accessToken || !calendarId) return;
     const fetchCalendar = async () => {
       setCalLoading(true);
-      const now = new Date();
-      const future = new Date(now);
-      future.setDate(now.getDate() + 35);
       try {
-        const res = await fetch(
-          "https://www.googleapis.com/calendar/v3/calendars/"+encodeURIComponent(calendarId)+"/events"+
-          "?timeMin="+now.toISOString()+"&timeMax="+future.toISOString()+
-          "&singleEvents=true&orderBy=startTime&maxResults=75",
-          { headers: { Authorization: "Bearer "+accessToken } }
-        );
+        const res = await fetch("/api/calendar");
         if(!res.ok) throw new Error("Calendar fetch failed: "+res.status);
         const data = await res.json();
-        const items = (data.items||[]).filter(e=>e.status!=="cancelled");
-        const processed = items.map(item=>{
-          const isAllDay = !!item.start?.date;
-          const dateStr = isAllDay ? item.start.date : (item.start?.dateTime||"").split("T")[0];
-          const fmtTime = (dt) => { if(!dt) return ""; return new Date(dt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true}); };
-          const timeStr = isAllDay ? "All day" : fmtTime(item.start?.dateTime);
-          const title = item.summary||"Untitled";
-          const lower = title.toLowerCase();
-          let who = "family";
-          if(lower.includes("kelly")&&!lower.includes("kevin")) who="Kelly";
-          else if(lower.includes("kevin")&&!lower.includes("kelly")) who="Kevin";
-          return { id:item.id, title, date:dateStr, time:timeStr, who, notes:item.description||"", location:item.location||"" };
-        });
-        setCalEvents(processed);
+        const events = data.events || [];
+        setCalEvents(events);
         const dateKeywords = ["date night","date with","💕","❤️","anniversary","dinner with","just us"];
-        const nd = processed.find(e=>dateKeywords.some(k=>e.title.toLowerCase().includes(k)));
+        const nd = events.find(e=>dateKeywords.some(k=>e.title.toLowerCase().includes(k)));
         if(nd){
           const d = new Date(nd.date+"T12:00:00");
           setNextDateNight({ date:d, label:d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}), title:nd.title });
@@ -221,7 +200,7 @@ export default function FamilySOUnion({ db, user, onSignOut, accessToken, calend
       setCalLoading(false);
     };
     fetchCalendar();
-  },[accessToken, calendarId]);
+  },[]);
 
   const [tab,setTab]                    = useState("debrief");
   const [tabsVisited,setTabsVisited]    = useState(new Set(["debrief"]));
@@ -544,21 +523,17 @@ export default function FamilySOUnion({ db, user, onSignOut, accessToken, calend
                   {conflictDays.length} coverage gap{conflictDays.length>1?"s":""}
                 </div>
               )}
-              {/* Calendar sync status */}
+              {/* Calendar status */}
               {calLoading ? (
                 <div className="flex items-center gap-1.5 text-xs text-stone-400">
                   <div className="w-3 h-3 border border-stone-400 border-t-transparent rounded-full animate-spin"/>
-                  Syncing calendar...
+                  Loading calendar...
                 </div>
-              ) : accessToken ? (
-                <button onClick={onSyncCalendar} className="text-xs text-stone-400 hover:text-slate-700 flex items-center gap-1">
-                  <Calendar className="w-3 h-3"/> {calEvents.length} events
-                </button>
               ) : (
-                <button onClick={onSyncCalendar}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors">
-                  <Calendar className="w-3.5 h-3.5"/> Sync calendar
-                </button>
+                <div className="flex items-center gap-1 text-xs text-stone-400">
+                  <Calendar className="w-3 h-3"/>
+                  {calEvents.length} events
+                </div>
               )}
             </div>
           </div>
@@ -964,9 +939,9 @@ export default function FamilySOUnion({ db, user, onSignOut, accessToken, calend
                 <Heart className="w-5 h-5 text-stone-400 flex-shrink-0"/>
                 <div className="flex-1">
                   <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Next date night</p>
-                  <p className="text-sm text-stone-400">{accessToken ? "No upcoming date nights found in calendar" : "Sync calendar to see your next date night"}</p>
+                  <p className="text-sm text-stone-400">No upcoming date nights found — add one to your family calendar with "date night" in the title</p>
                 </div>
-                {!accessToken && <button onClick={onSyncCalendar} className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors flex-shrink-0">Sync</button>}
+
               </div>
             )}
             <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-sm">
