@@ -16,11 +16,8 @@ const app = initializeApp(firebaseConfig);
 
 export const db             = getFirestore(app);
 export const auth           = getAuth(app);
-export const messaging      = getMessaging(app);
-
-// Google provider with Calendar read permission
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope("https://www.googleapis.com/auth/calendar.readonly");
+export const messaging      = getMessaging(app);
 
 export async function requestNotificationPermission(vapidKey) {
   try {
