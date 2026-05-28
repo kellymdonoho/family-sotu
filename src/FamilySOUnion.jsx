@@ -9,20 +9,8 @@ import {
 } from "lucide-react";
 
 // ── CALENDAR EVENTS ───────────────────────────────────────────────────────────
-const ALL_EVENTS = [
-  { id:"e1", title:"Shasta Baby Shower",         date:"2026-05-24", time:"9:30am-1:30pm", who:"family" },
-  { id:"e2", title:"Dinner at Nana & Grumpa's",  date:"2026-05-24", time:"4-7pm",         who:"family" },
-  { id:"e3", title:"Lily 5-yr well-child visit", date:"2026-05-28", time:"7:50am",         who:"family" },
-  { id:"e4", title:"Nana & Grumpa leave for AZ", date:"2026-05-29", time:"All day",        who:"family", notes:"Back June 8" },
-  { id:"e5", title:"Morgan Wallen concert",       date:"2026-05-29", time:"4-10pm",         who:"Kelly",  notes:"Kevin has the kids" },
-  { id:"e6", title:"Brunch with neighbor moms",  date:"2026-05-31", time:"10am-2pm",       who:"Kelly",  notes:"Kevin has the kids" },
-  { id:"e7", title:"Pay Lawn",                    date:"2026-06-01", time:"",               who:"Kevin" },
-  { id:"e8", title:"Nana & Grumpa in AZ",        date:"2026-06-01", time:"All week",       who:"family", notes:"Back June 8" },
-];
-const ACTION_ITEMS = [
-  { id:"a1", title:"Lily 5-yr visit: confirm any forms or prep needed", urgency:"urgent" },
-];
-const NEXT_DATE_NIGHT = { date: new Date(2026, 5, 26), label: "June 26, 2026" };
+// Events loaded live from Google Calendar (see fetchCalendarEvents)
+const ACTION_ITEMS = []; // Populated from calendar urgent events in future
 
 // ── MAINTENANCE ───────────────────────────────────────────────────────────────
 const MAINTENANCE = {
@@ -162,7 +150,7 @@ function SectionHeader({ icon:Icon, title, count }) {
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function FamilySOUnion({ db, user, onSignOut }) {
+export default function FamilySOUnion({ db, user, onSignOut, accessToken, calendarId, onSyncCalendar }) {
   const today = useMemo(()=>new Date(),[]);
   const monthIdx = today.getMonth();
   const monthKey = monthIdx+"-"+today.getFullYear();
@@ -184,13 +172,57 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const connectionQ = CONNECTION_QUESTIONS[weekNum%CONNECTION_QUESTIONS.length];
   const maintenanceTasks = MAINTENANCE[monthIdx]||[];
 
-  const daysUntilDate = useMemo(()=>{
-    const t=new Date(today); t.setHours(0,0,0,0);
-    const nd=new Date(NEXT_DATE_NIGHT.date); nd.setHours(0,0,0,0);
-    return Math.round((nd-t)/(1000*60*60*24));
-  },[today]);
+  // daysUntilDate is now computed inline from nextDateNight
 
   // ── STATE ─────────────────────────────────────────────────────────────────
+  // Calendar state
+  const [calEvents, setCalEvents]         = useState([]);
+  const [calLoading, setCalLoading]       = useState(false);
+  const [nextDateNight, setNextDateNight] = useState(null);
+
+  // Fetch calendar events when access token is available
+  useEffect(()=>{
+    if(!accessToken || !calendarId) return;
+    const fetchCalendar = async () => {
+      setCalLoading(true);
+      const now = new Date();
+      const future = new Date(now);
+      future.setDate(now.getDate() + 35);
+      try {
+        const res = await fetch(
+          "https://www.googleapis.com/calendar/v3/calendars/"+encodeURIComponent(calendarId)+"/events"+
+          "?timeMin="+now.toISOString()+"&timeMax="+future.toISOString()+
+          "&singleEvents=true&orderBy=startTime&maxResults=75",
+          { headers: { Authorization: "Bearer "+accessToken } }
+        );
+        if(!res.ok) throw new Error("Calendar fetch failed: "+res.status);
+        const data = await res.json();
+        const items = (data.items||[]).filter(e=>e.status!=="cancelled");
+        const processed = items.map(item=>{
+          const isAllDay = !!item.start?.date;
+          const dateStr = isAllDay ? item.start.date : (item.start?.dateTime||"").split("T")[0];
+          const fmtTime = (dt) => { if(!dt) return ""; return new Date(dt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true}); };
+          const timeStr = isAllDay ? "All day" : fmtTime(item.start?.dateTime);
+          const title = item.summary||"Untitled";
+          const lower = title.toLowerCase();
+          let who = "family";
+          if(lower.includes("kelly")&&!lower.includes("kevin")) who="Kelly";
+          else if(lower.includes("kevin")&&!lower.includes("kelly")) who="Kevin";
+          return { id:item.id, title, date:dateStr, time:timeStr, who, notes:item.description||"", location:item.location||"" };
+        });
+        setCalEvents(processed);
+        const dateKeywords = ["date night","date with","💕","❤️","anniversary","dinner with","just us"];
+        const nd = processed.find(e=>dateKeywords.some(k=>e.title.toLowerCase().includes(k)));
+        if(nd){
+          const d = new Date(nd.date+"T12:00:00");
+          setNextDateNight({ date:d, label:d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}), title:nd.title });
+        }
+      } catch(e){ console.error("Calendar error:",e); }
+      setCalLoading(false);
+    };
+    fetchCalendar();
+  },[accessToken, calendarId]);
+
   const [tab,setTab]                    = useState("debrief");
   const [tabsVisited,setTabsVisited]    = useState(new Set(["debrief"]));
   const [syncStatus,setSyncStatus]      = useState("loading"); // loading|synced|saving
@@ -292,9 +324,15 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   // ── COMPUTED ──────────────────────────────────────────────────────────────
   const eventsByDate = useMemo(()=>{
     const g={};
-    ALL_EVENTS.forEach(e=>{ if(!g[e.date]) g[e.date]=[]; g[e.date].push(e); });
+    calEvents.forEach(e=>{ if(!g[e.date]) g[e.date]=[]; g[e.date].push(e); });
     return g;
-  },[]);
+  },[calEvents]);
+
+  // Events beyond the planning week (upcoming 30 days)
+  const upcomingEvents = useMemo(()=>{
+    const planningKeys = new Set(planningWeek.map(d=>d.key));
+    return calEvents.filter(e=>e.date && !planningKeys.has(e.date)).slice(0,15);
+  },[calEvents, planningWeek]);
 
   const thisWeekDecisions  = useMemo(()=>decisions.filter(d=>d.weekOf===weekId),[decisions,weekId]);
   const carriedInItems     = useMemo(()=>lastWeekDecisions.filter(d=>d.carriedToWeek===weekId),[lastWeekDecisions,weekId]);
@@ -436,7 +474,8 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   };
 
   const copyChecklistToClipboard = async()=>{
-    const lines=["DATE NIGHT PREP - "+NEXT_DATE_NIGHT.label,""];
+    const dateLabel = nextDateNight ? nextDateNight.label : "Date Night";
+    const lines=["DATE NIGHT PREP - "+dateLabel,""];
     if(checklistNote) { lines.push("Plan: "+checklistNote,""); }
     CHECKLIST_SECTIONS.forEach(section=>{
       const hasContent=section.items.some(item=>checklistState[item.id]||checklistAnswers[item.id]);
@@ -504,6 +543,22 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0"/>
                   {conflictDays.length} coverage gap{conflictDays.length>1?"s":""}
                 </div>
+              )}
+              {/* Calendar sync status */}
+              {calLoading ? (
+                <div className="flex items-center gap-1.5 text-xs text-stone-400">
+                  <div className="w-3 h-3 border border-stone-400 border-t-transparent rounded-full animate-spin"/>
+                  Syncing calendar...
+                </div>
+              ) : accessToken ? (
+                <button onClick={onSyncCalendar} className="text-xs text-stone-400 hover:text-slate-700 flex items-center gap-1">
+                  <Calendar className="w-3 h-3"/> {calEvents.length} events
+                </button>
+              ) : (
+                <button onClick={onSyncCalendar}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors">
+                  <Calendar className="w-3.5 h-3.5"/> Sync calendar
+                </button>
               )}
             </div>
           </div>
@@ -643,6 +698,33 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                 })}
               </div>
             </div>
+            {/* Upcoming events (beyond planning week) */}
+            {upcomingEvents.length>0&&(
+              <div>
+                <button onClick={()=>setExpandedSections(p=>({...p,upcoming:!p.upcoming}))}
+                  className="w-full flex items-center gap-2 mb-2 text-left">
+                  <Calendar className="w-4 h-4 text-stone-400 flex-shrink-0"/>
+                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-widest flex-1">Coming up (30 days)</h2>
+                  <span className="text-xs text-stone-400">{upcomingEvents.length} events</span>
+                  {expandedSections.upcoming?<ChevronDown className="w-4 h-4 text-stone-400"/>:<ChevronRight className="w-4 h-4 text-stone-400"/>}
+                </button>
+                {expandedSections.upcoming&&(
+                  <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm mb-4">
+                    {upcomingEvents.map((e,i)=>(
+                      <div key={e.id} className={"flex items-start gap-3 px-4 py-3 "+(i<upcomingEvents.length-1?"border-b border-stone-100":"")}>
+                        <span className={"w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 "+(e.who==="Kelly"?"bg-rose-400":e.who==="Kevin"?"bg-blue-400":"bg-stone-300")}/>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{e.title}</p>
+                          <p className="text-xs text-stone-400">{new Date(e.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}{e.time&&e.time!=="All day"?" · "+e.time:""}</p>
+                        </div>
+                        {e.who!=="family"&&<span className={"text-xs font-semibold "+(e.who==="Kelly"?"text-rose-600":"text-blue-600")}>{e.who}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <SectionHeader icon={AlertTriangle} title="Action items"/>
               <div className="space-y-2">
@@ -864,16 +946,29 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
         {/* CONNECT */}
         {tab==="connect"&&(
           <div className="space-y-5">
-            <div className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-              <Heart className="w-6 h-6 text-rose-500 flex-shrink-0"/>
-              <div className="flex-1">
-                <p className="text-xs font-bold text-rose-500 uppercase tracking-wider">Next date night</p>
-                <p className="text-lg font-bold text-slate-900">{NEXT_DATE_NIGHT.label}</p>
+            {nextDateNight ? (
+              <div className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
+                <Heart className="w-6 h-6 text-rose-500 flex-shrink-0"/>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-rose-500 uppercase tracking-wider">Next date night</p>
+                  <p className="text-lg font-bold text-slate-900">{nextDateNight.label}</p>
+                  {nextDateNight.title && <p className="text-xs text-stone-500 mt-0.5">{nextDateNight.title}</p>}
+                </div>
+                {(()=>{
+                  const d=Math.round((nextDateNight.date-new Date())/(1000*60*60*24));
+                  return <span className={"text-sm font-bold px-3 py-1.5 rounded-full border flex-shrink-0 "+(d<=7?"bg-rose-500 text-white border-rose-500":d<=14?"bg-amber-100 text-amber-700 border-amber-200":"bg-rose-100 text-rose-700 border-rose-200")}>{d<=0?"Today!":d===1?"Tomorrow":d+"d away"}</span>;
+                })()}
               </div>
-              <span className={"text-sm font-bold px-3 py-1.5 rounded-full border flex-shrink-0 "+(daysUntilDate<=7?"bg-rose-500 text-white border-rose-500":daysUntilDate<=14?"bg-amber-100 text-amber-700 border-amber-200":"bg-rose-100 text-rose-700 border-rose-200")}>
-                {daysUntilDate===0?"Today!":daysUntilDate===1?"Tomorrow":daysUntilDate+"d away"}
-              </span>
-            </div>
+            ) : (
+              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4 flex items-center gap-3 shadow-sm">
+                <Heart className="w-5 h-5 text-stone-400 flex-shrink-0"/>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Next date night</p>
+                  <p className="text-sm text-stone-400">{accessToken ? "No upcoming date nights found in calendar" : "Sync calendar to see your next date night"}</p>
+                </div>
+                {!accessToken && <button onClick={onSyncCalendar} className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors flex-shrink-0">Sync</button>}
+              </div>
+            )}
             <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-sm">
               <SectionHeader icon={MessageSquare} title="Connection questions"/>
               <p className="text-xs text-stone-500 mb-3 -mt-2">Take turns. No fixing, no advising - just listen.</p>
@@ -948,11 +1043,11 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                   </div>
                   {copyStatus==="copied"&&(
                     <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100">
-                      <p className="text-xs text-emerald-700 font-semibold">Copied. Paste into your {NEXT_DATE_NIGHT.label} calendar event description.</p>
+                      <p className="text-xs text-emerald-700 font-semibold">Copied. Paste into your {nextDateNight ? nextDateNight.label : "date night"} calendar event description.</p>
                     </div>
                   )}
                   <div className="px-4 py-3 border-b border-stone-100">
-                    <p className="text-xs font-bold text-stone-500 mb-1.5">What is the plan for {NEXT_DATE_NIGHT.label}?</p>
+                    <p className="text-xs font-bold text-stone-500 mb-1.5">What is the plan{nextDateNight ? " for "+nextDateNight.label : ""}?</p>
                     <textarea value={checklistNote||""} onChange={e=>{ setChecklistNote(e.target.value); persist("checklistNote",e.target.value); }}
                       placeholder="e.g. Dinner at Guard & Grace, 7pm..."
                       className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-rose-300 text-slate-900 bg-white"
