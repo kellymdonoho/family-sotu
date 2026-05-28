@@ -1,31 +1,29 @@
 import { useState, useEffect } from "react";
 import { auth, googleProvider, db, messaging, requestNotificationPermission, onMessage } from "./firebase";
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import FamilySOUnion from "./FamilySOUnion";
 import { Heart, Bell, BellOff } from "lucide-react";
 
-// Add your emails here to restrict access (leave empty to allow any Google account)
 const ALLOWED_EMAILS = [
-  // "kellymdonoho@gmail.com",
-  // "kdonoho1@gmail.com",
+  // "kelly@gmail.com",
+  // "kevin@gmail.com",
 ];
 
-// Get this from Firebase Console > Project Settings > Cloud Messaging > Web Push certificates > Key pair
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || "";
+const CALENDAR_ID = import.meta.env.VITE_GOOGLE_CALENDAR_ID || "family05228371708556106632@group.calendar.google.com";
 
 async function saveTokenToFirestore(userId, token) {
-  await setDoc(doc(db, "fcm_tokens", userId), {
-    token,
-    updatedAt: new Date().toISOString(),
-  });
+  await setDoc(doc(db, "fcm_tokens", userId), { token, updatedAt: new Date().toISOString() });
 }
 
 export default function App() {
-  const [user, setUser]           = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(null);
-  const [notifStatus, setNotifStatus] = useState("unknown"); // unknown|granted|denied|unsupported
+  const [user, setUser]               = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(null);
+  const [notifStatus, setNotifStatus] = useState("unknown");
+  const [accessToken, setAccessToken] = useState(null);
+  const [calendarSynced, setCalendarSynced] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -36,13 +34,12 @@ export default function App() {
     return unsub;
   }, []);
 
-  // Listen for foreground push notifications (app is open)
+  // Listen for foreground push notifications
   useEffect(() => {
     if (!user) return;
     const unsub = onMessage(messaging, (payload) => {
       const { title, body } = payload.notification || {};
       if (title) {
-        // Show a simple in-app toast for foreground notifications
         const toast = document.createElement("div");
         toast.innerHTML = `<strong>${title}</strong><p style="margin:4px 0 0">${body || ""}</p>`;
         Object.assign(toast.style, {
@@ -61,7 +58,6 @@ export default function App() {
     if (!("Notification" in window)) { setNotifStatus("unsupported"); return; }
     if (Notification.permission === "granted") {
       setNotifStatus("granted");
-      // Refresh token silently
       const token = await requestNotificationPermission(VAPID_KEY);
       if (token) await saveTokenToFirestore(uid, token);
     } else if (Notification.permission === "denied") {
@@ -74,12 +70,8 @@ export default function App() {
   const enableNotifications = async () => {
     if (!user || !VAPID_KEY) return;
     const token = await requestNotificationPermission(VAPID_KEY);
-    if (token) {
-      await saveTokenToFirestore(user.uid, token);
-      setNotifStatus("granted");
-    } else {
-      setNotifStatus(Notification.permission === "denied" ? "denied" : "prompt");
-    }
+    if (token) { await saveTokenToFirestore(user.uid, token); setNotifStatus("granted"); }
+    else setNotifStatus(Notification.permission === "denied" ? "denied" : "prompt");
   };
 
   const signIn = async () => {
@@ -89,9 +81,30 @@ export default function App() {
       if (ALLOWED_EMAILS.length > 0 && !ALLOWED_EMAILS.includes(result.user.email)) {
         await signOut(auth);
         setError("This Google account is not authorized.");
+        return;
+      }
+      // Extract Google OAuth access token for Calendar API
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setAccessToken(credential.accessToken);
+        setCalendarSynced(true);
       }
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  // Re-sync calendar (get fresh token) — called when token expires or user taps refresh
+  const syncCalendar = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setAccessToken(credential.accessToken);
+        setCalendarSynced(true);
+      }
+    } catch (e) {
+      console.error("Calendar sync error:", e);
     }
   };
 
@@ -106,10 +119,9 @@ export default function App() {
       <div className="bg-white border border-stone-200 rounded-2xl p-8 shadow-sm max-w-sm w-full text-center">
         <Heart className="w-10 h-10 text-rose-400 mx-auto mb-4"/>
         <h1 className="text-2xl font-bold text-slate-900 mb-1">Kelly & Kevin</h1>
-        <p className="text-sm text-stone-500 mb-6">State of the Union</p>
-        {error && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2 mb-4 text-xs text-rose-700">{error}</div>
-        )}
+        <p className="text-sm text-stone-500 mb-2">State of the Union</p>
+        <p className="text-xs text-stone-400 mb-6">Google will ask to access your calendar — tap Allow to sync your family events.</p>
+        {error && <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2 mb-4 text-xs text-rose-700">{error}</div>}
         <button onClick={signIn}
           className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-stone-300 rounded-xl hover:bg-stone-50 transition-colors text-sm font-semibold text-slate-700 shadow-sm">
           <svg viewBox="0 0 24 24" className="w-5 h-5">
@@ -127,7 +139,6 @@ export default function App() {
 
   return (
     <div>
-      {/* Notification prompt banner - shows once after sign-in */}
       {notifStatus === "prompt" && VAPID_KEY && (
         <div className="bg-slate-900 text-white px-4 py-3 flex items-center gap-3">
           <Bell className="w-4 h-4 text-amber-400 flex-shrink-0"/>
@@ -143,10 +154,17 @@ export default function App() {
       )}
       {notifStatus === "denied" && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-700 text-center">
-          Notifications blocked. To enable: Settings → Safari → [this site] → Notifications → Allow
+          Notifications blocked. Settings → Safari → [this site] → Notifications → Allow
         </div>
       )}
-      <FamilySOUnion db={db} user={user} onSignOut={()=>signOut(auth)}/>
+      <FamilySOUnion
+        db={db}
+        user={user}
+        onSignOut={()=>signOut(auth)}
+        accessToken={accessToken}
+        calendarId={CALENDAR_ID}
+        onSyncCalendar={syncCalendar}
+      />
     </div>
   );
 }
