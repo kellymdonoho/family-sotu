@@ -16,11 +16,12 @@ const app = initializeApp(firebaseConfig);
 
 export const db             = getFirestore(app);
 export const auth           = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
 export const messaging      = getMessaging(app);
 
-// Request push notification permission and get FCM token
-// VAPID key comes from Firebase Console > Cloud Messaging > Web Push certificates
+// Google provider with Calendar read permission
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope("https://www.googleapis.com/auth/calendar.readonly");
+
 export async function requestNotificationPermission(vapidKey) {
   try {
     const permission = await Notification.requestPermission();
