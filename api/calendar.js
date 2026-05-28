@@ -44,10 +44,11 @@ function parseIcal(text) {
       const yr = clean.slice(0,4), mo = clean.slice(4,6), dy = clean.slice(6,8);
       const hr = clean.slice(9,11), mn = clean.slice(11,13);
       const isUTC = clean.endsWith("Z");
-      dateStr = `${yr}-${mo}-${dy}`;
       const d = isUTC
         ? new Date(`${yr}-${mo}-${dy}T${hr}:${mn}:00Z`)
         : new Date(`${yr}-${mo}-${dy}T${hr}:${mn}:00`);
+      // Derive date in Mountain Time so UTC events don't shift to the wrong day
+      dateStr = d.toLocaleDateString("en-CA", { timeZone: "America/Denver" });
       timeStr = d.toLocaleTimeString("en-US", {
         hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Denver"
       });
