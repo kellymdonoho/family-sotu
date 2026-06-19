@@ -33,12 +33,12 @@ exports.sundayMeetingReminder = onSchedule(
       },
       webpush: {
         notification: {
-          icon: "https://YOUR_VERCEL_URL/icon-192.png",   // update after deploy
-          badge: "https://YOUR_VERCEL_URL/icon-192.png",
+          icon: "https://family-sotu.vercel.app/icon-192.png",
+          badge: "https://family-sotu.vercel.app/icon-192.png",
           vibrate: [200, 100, 200],
         },
         fcm_options: {
-          link: "https://YOUR_VERCEL_URL",               // update after deploy
+          link: "https://family-sotu.vercel.app",
         },
       },
       tokens,
