@@ -5,12 +5,12 @@ importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-com
 
 // These values are safe to be public - they only identify your Firebase project
 firebase.initializeApp({
-  apiKey:            "REPLACE_WITH_YOUR_FIREBASE_API_KEY",
-  authDomain:        "REPLACE_WITH_YOUR_AUTH_DOMAIN",
-  projectId:         "REPLACE_WITH_YOUR_PROJECT_ID",
-  storageBucket:     "REPLACE_WITH_YOUR_STORAGE_BUCKET",
-  messagingSenderId: "REPLACE_WITH_YOUR_MESSAGING_SENDER_ID",
-  appId:             "REPLACE_WITH_YOUR_APP_ID",
+  apiKey:            "AIzaSyB4G-d8IPLPpbbCGQst2vDj0aVoHG14eDw",
+  authDomain:        "family-sotu.firebaseapp.com",
+  projectId:         "family-sotu",
+  storageBucket:     "family-sotu.firebasestorage.app",
+  messagingSenderId: "269556323351",
+  appId:             "1:269556323351:web:f6df520b51400835597852",
 });
 
 const messaging = firebase.messaging();
