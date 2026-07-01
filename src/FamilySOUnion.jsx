@@ -337,7 +337,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const totalCheckItems   = CHECKLIST_SECTIONS.reduce((s,sec)=>s+sec.items.length,0);
   const checkedCount      = Object.values(checklistState).filter(Boolean).length;
   const checklistPct      = totalCheckItems?Math.round(checkedCount/totalCheckItems*100):0;
-  const allTabsVisited    = ["debrief","align","plan","connect"].every(t=>tabsVisited.has(t));
+  const allTabsVisited    = ["debrief","align","plan","home","connect"].every(t=>tabsVisited.has(t));
   const mealsPlanned      = planningWeek.filter(d=>(mealEdits[d.key]||"").trim()).length;
   const coverageSet       = planningWeek.filter(d=>coverage[d.key]&&coverage[d.key]!=="TBD").length;
   const groceryAllItems   = useMemo(()=>Object.entries(groceryList).flatMap(([cat,items])=>items.map((_,i)=>cat+"-"+i)),[groceryList]);
@@ -507,6 +507,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     {id:"debrief",label:"Debrief",icon:Trophy},
     {id:"align",label:"This Week",icon:Calendar},
     {id:"plan",label:"Plan",icon:Utensils},
+    {id:"home",label:"Home",icon:Home},
     {id:"connect",label:"Us",icon:Heart},
   ];
 
@@ -913,6 +914,16 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                 </>
               )}
             </div>
+            <button onClick={()=>visitTab("home")}
+              className="w-full flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white text-sm font-bold rounded-2xl hover:bg-slate-800 transition-colors">
+              Next: Home <ArrowRight className="w-4 h-4"/>
+            </button>
+          </div>
+        )}
+
+        {/* HOME */}
+        {tab==="home"&&(
+          <div className="space-y-5">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
