@@ -19,12 +19,14 @@ export const auth           = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const messaging      = getMessaging(app);
 
+// Request push notification permission and get FCM token
+// VAPID key comes from Firebase Console > Cloud Messaging > Web Push certificates
 export async function requestNotificationPermission(vapidKey) {
   try {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") return null;
-       const swReg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js")
-      ?? await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const swReg = await navigator.serviceWorker.getRegistration("/sw.js")
+      ?? await navigator.serviceWorker.register("/sw.js");
     const token = await getToken(messaging, {
       vapidKey,
       serviceWorkerRegistration: swReg,
