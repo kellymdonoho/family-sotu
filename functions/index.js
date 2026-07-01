@@ -5,7 +5,7 @@ const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
 
-// Runs every Saturday at 7:00 PM Mountain Time
+// Runs every Saturday at 7:00 PM Mountain Time (America/Denver)
 // Sends a push notification to everyone with a registered FCM token
 exports.sundayMeetingReminder = onSchedule(
   {
