@@ -238,6 +238,10 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const [copyStatus,setCopyStatus]      = useState("idle");
   const mealSaveTimer = useRef(null);
 
+  // Meeting streak (persisted across weeks)
+  const [streak,setStreak]              = useState({count:0,best:0,lastCompletedWeek:null});
+  const streakRecorded                  = useRef(false);
+
   // ── FIRESTORE LISTENERS ───────────────────────────────────────────────────
   useEffect(()=>{
     // Current week
@@ -273,7 +277,12 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     const unsubHouse = onSnapshot(houseRef,(snap)=>{
       if(snap.exists()) setHouseDone(snap.data().done||{});
     });
-    return ()=>{ unsubCurr(); unsubLast(); unsubHouse(); };
+    // Streak (single shared doc)
+    const streakRef = doc(db,"meta","streak");
+    const unsubStreak = onSnapshot(streakRef,(snap)=>{
+      if(snap.exists()) setStreak(s=>({...s,...snap.data()}));
+    });
+    return ()=>{ unsubCurr(); unsubLast(); unsubHouse(); unsubStreak(); };
   },[db,weekId,lastWeekId,monthKey]);
 
   // Sync mealEdits with meals from Firestore
@@ -334,6 +343,17 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const groceryAllItems   = useMemo(()=>Object.entries(groceryList).flatMap(([cat,items])=>items.map((_,i)=>cat+"-"+i)),[groceryList]);
   const groceryCheckedCount = groceryAllItems.filter(k=>groceryChecked[k]).length;
   const groceryPct        = groceryAllItems.length?Math.round(groceryCheckedCount/groceryAllItems.length*100):0;
+
+  // Record a completed meeting once per week, and grow the streak
+  useEffect(()=>{
+    if(!allTabsVisited || streakRecorded.current || streak.lastCompletedWeek===weekId) return;
+    streakRecorded.current = true;
+    const prevWeek = subtractDays(weekId,7);
+    const count = streak.lastCompletedWeek===prevWeek ? (streak.count||0)+1 : 1;
+    const updated = { count, best:Math.max(streak.best||0,count), lastCompletedWeek:weekId };
+    setStreak(updated);
+    setDoc(doc(db,"meta","streak"),updated,{merge:true}).catch(e=>console.error(e));
+  },[allTabsVisited,streak,weekId,db]);
 
   // ── HANDLERS ──────────────────────────────────────────────────────────────
   const visitTab = t=>{ setTab(t); setTabsVisited(p=>new Set([...p,t])); };
@@ -561,6 +581,15 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
         {/* DEBRIEF */}
         {tab==="debrief"&&(
           <div className="space-y-5">
+            {streak.count>0&&(
+              <div className="flex items-center gap-3 bg-white border border-stone-200 rounded-2xl p-4 shadow-sm">
+                <Flame className="w-5 h-5 text-amber-500 flex-shrink-0"/>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-slate-900">{streak.count} week{streak.count!==1?"s":""} in a row</p>
+                  <p className="text-xs text-stone-400">Best streak: {streak.best}</p>
+                </div>
+              </div>
+            )}
             <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-sm">
               <SectionHeader icon={Trophy} title="Start with wins"/>
               <p className="text-xs text-stone-500 mb-3">One win each from last week. No logistics yet.</p>
@@ -1085,6 +1114,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                   {Object.keys(groceryList).length>0&&<p className="text-sm text-stone-200">Grocery list ready ({groceryAllItems.length} items)</p>}
                   <p className="text-sm text-stone-200">{coverageSet} of 7 days with kid coverage set</p>
                   {nextDateNight&&(()=>{ const d=Math.round((nextDateNight.date-new Date())/(1000*60*60*24)); return <p className="text-sm text-stone-200">Next date: {nextDateNight.label} ({d<=0?"today":d===1?"tomorrow":d+"d away"})</p>; })()}
+                  {streak.count>0&&<p className="text-sm text-stone-200 flex items-center gap-1.5"><Flame className="w-3.5 h-3.5 text-amber-400"/>{streak.count} week streak{streak.best>streak.count?" · best "+streak.best:""}</p>}
                   {conflictDays.length>0&&<p className="text-sm text-amber-300">{conflictDays.length} coverage gap{conflictDays.length>1?"s":""} remaining</p>}
                 </div>
               </div>
