@@ -110,6 +110,14 @@ const HOUSE_ICONS = {HVAC:Wind,Roof:Home,Safety:Shield,Plumbing:Droplets,Applian
 const PRIORITY_COLOR = {critical:"text-rose-600",high:"text-amber-600",medium:"text-stone-400",low:"text-stone-300"};
 
 const uid = () => Math.random().toString(36).slice(2,9);
+const normalizeMeal = (s) => (s||"").trim().toLowerCase();
+const categorizeIngredient = (item) => {
+  const s = (item||"").toLowerCase();
+  if (/(lettuce|tomato|onion|pepper|lime|lemon|garlic|cilantro|avocado|potato|carrot|celery|broccoli|cucumber|spinach|kale|zucchini|mushroom|apple|banana|berr|greens|scallion|shallot|corn|asparagus|green bean|peas|coleslaw|olive)/.test(s)) return "Produce";
+  if (/(chicken|beef|pork|turkey|salmon|fish|shrimp|steak|bacon|sausage|tofu|egg|roast|\bmeat\b)/.test(s)) return "Protein";
+  if (/(milk|cheese|butter|cream|yogurt|mozzarella|cheddar|parmesan|feta)/.test(s)) return "Dairy";
+  return "Pantry";
+};
 const getMonday = (d) => { const date=new Date(d),dow=date.getDay(); date.setDate(date.getDate()-(dow===0?6:dow-1)); date.setHours(0,0,0,0); return date; };
 const fmtDateKey = (date) => { const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,"0"),d=String(date.getDate()).padStart(2,"0"); return y+"-"+m+"-"+d; };
 const subtractDays = (dateKey,n) => { const [y,m,d]=dateKey.split("-").map(Number); return fmtDateKey(new Date(y,m-1,d-n)); };
@@ -242,6 +250,12 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const [streak,setStreak]              = useState({count:0,best:0,lastCompletedWeek:null});
   const streakRecorded                  = useRef(false);
 
+  // Recipe library + persistent meal ratings (shared)
+  const [recipes,setRecipes]            = useState([]);
+  const [mealRatings,setMealRatings]    = useState({});
+  const [showAddRecipe,setShowAddRecipe]= useState(false);
+  const [recipeForm,setRecipeForm]      = useState({name:"",url:"",time:"",ingredients:""});
+
   // ── FIRESTORE LISTENERS ───────────────────────────────────────────────────
   useEffect(()=>{
     // Current week
@@ -282,7 +296,16 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     const unsubStreak = onSnapshot(streakRef,(snap)=>{
       if(snap.exists()) setStreak(s=>({...s,...snap.data()}));
     });
-    return ()=>{ unsubCurr(); unsubLast(); unsubHouse(); unsubStreak(); };
+    // Recipe library + ratings (shared)
+    const recipesRef = doc(db,"meta","recipes");
+    const unsubRecipes = onSnapshot(recipesRef,(snap)=>{
+      if(snap.exists()) setRecipes(snap.data().list||[]);
+    });
+    const ratingsRef = doc(db,"meta","ratings");
+    const unsubRatings = onSnapshot(ratingsRef,(snap)=>{
+      if(snap.exists()) setMealRatings(snap.data().ratings||{});
+    });
+    return ()=>{ unsubCurr(); unsubLast(); unsubHouse(); unsubStreak(); unsubRecipes(); unsubRatings(); };
   },[db,weekId,lastWeekId,monthKey]);
 
   // Sync mealEdits with meals from Firestore
@@ -424,6 +447,32 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     await persist("checklistState",{}); await persist("checklistNote",""); await persist("checklistAnswers",{});
   };
 
+  const rateMeal = async(mealName,rating)=>{
+    const name=normalizeMeal(mealName);
+    if(!name) return;
+    const u={...mealRatings};
+    if(u[name]===rating) delete u[name]; else u[name]=rating;
+    setMealRatings(u);
+    try { await setDoc(doc(db,"meta","ratings"),{ratings:u},{merge:true}); } catch(e){ console.error(e); }
+  };
+
+  const addRecipe = async()=>{
+    const name=recipeForm.name.trim();
+    if(!name) return;
+    const ingredients=recipeForm.ingredients.split("\n").map(s=>s.trim()).filter(Boolean);
+    const rec={id:uid(),name,url:recipeForm.url.trim(),time:recipeForm.time.trim(),ingredients};
+    const u=[...recipes,rec];
+    setRecipes(u);
+    try { await setDoc(doc(db,"meta","recipes"),{list:u},{merge:true}); } catch(e){ console.error(e); }
+    setRecipeForm({name:"",url:"",time:"",ingredients:""}); setShowAddRecipe(false);
+  };
+
+  const removeRecipe = async(id)=>{
+    const u=recipes.filter(r=>r.id!==id);
+    setRecipes(u);
+    try { await setDoc(doc(db,"meta","recipes"),{list:u},{merge:true}); } catch(e){ console.error(e); }
+  };
+
   const setMealFb = async(key,rating)=>{
     const u={...mealFeedback};
     if(u[key]===rating) delete u[key]; else u[key]=rating;
@@ -451,15 +500,23 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
       "chicken tacos":            { Produce:["Lime, 2","Cilantro, 1 bunch","Avocado, 2"], Protein:["Chicken thighs, 2 lbs"], Dairy:["Shredded cheese, 8 oz","Sour cream, 8 oz"], Pantry:["Flour tortillas, 1 pkg","Taco seasoning, 1 packet","Salsa, 1 jar"] },
       "beef chili":               { Produce:["Yellow onion, 2","Bell pepper, 2"], Protein:["Ground beef, 2 lbs"], Dairy:["Shredded cheese, 8 oz","Sour cream, 8 oz"], Pantry:["Kidney beans, 2 cans","Diced tomatoes, 2 cans","Chili powder","Cumin","Beef broth, 1 cup"] },
     };
+    // Merge in the shared recipe library so custom meals feed the list too
+    const lookup={...INGREDIENTS};
+    recipes.forEach(r=>{
+      if(!r.ingredients||!r.ingredients.length) return;
+      const cats={Produce:[],Protein:[],Dairy:[],Pantry:[],Other:[]};
+      r.ingredients.forEach(ing=>{ cats[categorizeIngredient(ing)].push(ing); });
+      lookup[normalizeMeal(r.name)]=cats;
+    });
     const mealList=planningWeek.map(d=>(mealEdits[d.key]||"").trim()).filter(Boolean);
     if(!mealList.length) return;
     const combined={Produce:[],Protein:[],Dairy:[],Pantry:[],Other:[]};
     const unmatched=[];
     mealList.forEach(meal=>{
       const norm=meal.toLowerCase();
-      const matchKey=Object.keys(INGREDIENTS).find(k=>norm.includes(k)||k.split(" ").some(w=>w.length>4&&norm.includes(w)));
+      const matchKey=Object.keys(lookup).find(k=>norm.includes(k)||k.split(" ").some(w=>w.length>4&&norm.includes(w)));
       if(matchKey){
-        Object.entries(INGREDIENTS[matchKey]).forEach(([cat,items])=>{
+        Object.entries(lookup[matchKey]).forEach(([cat,items])=>{
           const target=combined[cat]!==undefined?cat:"Other";
           items.forEach(item=>{ if(!combined[target].includes(item)) combined[target].push(item); });
         });
@@ -811,12 +868,12 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                           className="flex-1 text-sm border border-stone-200 rounded-xl px-2.5 py-1.5 resize-none focus:outline-none focus:border-stone-400 text-slate-900 bg-white"
                           style={{height:36}}/>
                         <div className="flex gap-1 flex-shrink-0" onClick={e=>e.stopPropagation()}>
-                          <button onClick={()=>setMealFb(day.key,"liked")}
-                            className={"p-1.5 rounded-lg border transition-colors "+(mealFeedback[day.key]==="liked"?"bg-emerald-50 border-emerald-300 text-emerald-600":"border-stone-200 text-stone-300 hover:text-emerald-500")}>
+                          <button onClick={()=>rateMeal(mealEdits[day.key],"liked")}
+                            className={"p-1.5 rounded-lg border transition-colors "+(mealRatings[normalizeMeal(mealEdits[day.key])]==="liked"?"bg-emerald-50 border-emerald-300 text-emerald-600":"border-stone-200 text-stone-300 hover:text-emerald-500")}>
                             <ThumbsUp className="w-3.5 h-3.5"/>
                           </button>
-                          <button onClick={()=>setMealFb(day.key,"disliked")}
-                            className={"p-1.5 rounded-lg border transition-colors "+(mealFeedback[day.key]==="disliked"?"bg-rose-50 border-rose-300 text-rose-600":"border-stone-200 text-stone-300 hover:text-rose-500")}>
+                          <button onClick={()=>rateMeal(mealEdits[day.key],"disliked")}
+                            className={"p-1.5 rounded-lg border transition-colors "+(mealRatings[normalizeMeal(mealEdits[day.key])]==="disliked"?"bg-rose-50 border-rose-300 text-rose-600":"border-stone-200 text-stone-300 hover:text-rose-500")}>
                             <ThumbsDown className="w-3.5 h-3.5"/>
                           </button>
                         </div>
@@ -831,12 +888,34 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                           <button onClick={()=>setSelectedMealDay(null)}><X className="w-4 h-4 text-stone-400 hover:text-white"/></button>
                         </div>
                         <div className="divide-y divide-stone-100 max-h-72 overflow-y-auto">
+                          {recipes.length>0&&(
+                            <div className="px-4 py-2.5">
+                              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Your recipes</p>
+                              {recipes.map(r=>(
+                                <div key={r.id} className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
+                                  onClick={()=>{const u={...mealEdits,[day.key]:r.name};setMealEdits(u);autoSaveMeals(u);setSelectedMealDay(null);}}>
+                                  {mealRatings[normalizeMeal(r.name)]==="liked"&&<Star className="w-3 h-3 text-amber-500 fill-amber-500 flex-shrink-0"/>}
+                                  <span className="flex-1 text-sm font-semibold text-slate-800">{r.name}</span>
+                                  {r.time&&<span className="text-xs text-stone-400">{r.time}</span>}
+                                  {r.url&&<a href={r.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+                                    className="p-1 text-stone-400 hover:text-blue-600 rounded-lg transition-colors">
+                                    <ExternalLink className="w-3 h-3"/>
+                                  </a>}
+                                  <button onClick={e=>{e.stopPropagation();removeRecipe(r.id);}}
+                                    className="p-1 text-stone-300 hover:text-rose-500 rounded-lg transition-colors">
+                                    <X className="w-3 h-3"/>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {MEAL_SUGGESTIONS.map(cat=>(
                             <div key={cat.category} className="px-4 py-2.5">
                               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">{cat.category}</p>
                               {cat.meals.map(meal=>(
                                 <div key={meal.name} className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
                                   onClick={()=>{const u={...mealEdits,[day.key]:meal.name};setMealEdits(u);autoSaveMeals(u);setSelectedMealDay(null);}}>
+                                  {mealRatings[normalizeMeal(meal.name)]==="liked"&&<Star className="w-3 h-3 text-amber-500 fill-amber-500 flex-shrink-0"/>}
                                   <span className="flex-1 text-sm font-semibold text-slate-800">{meal.name}</span>
                                   <span className="text-xs text-stone-400">{meal.time}</span>
                                   <a href={meal.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
@@ -858,6 +937,39 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                 style={{background:saveStatus==="saved"||saveStatus==="autosaved"?"#059669":"#1e293b"}}>
                 {saveStatus==="saved"||saveStatus==="autosaved"?<><Check className="w-4 h-4"/>Saved</>:<><Save className="w-4 h-4"/>Save plan</>}
               </button>
+              <div className="mt-3">
+                <button onClick={()=>setShowAddRecipe(v=>!v)}
+                  className="flex items-center gap-2 text-xs font-bold text-stone-500 hover:text-slate-900 transition-colors">
+                  <Plus className="w-3.5 h-3.5"/>Add a meal to your recipes
+                </button>
+                {showAddRecipe&&(
+                  <div className="mt-2 bg-white border border-stone-200 rounded-2xl p-3.5 shadow-sm space-y-2">
+                    <input value={recipeForm.name} onChange={e=>setRecipeForm(f=>({...f,name:e.target.value}))}
+                      placeholder="Meal name (e.g. Grandma's lasagna)"
+                      className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400 text-slate-900 bg-white"/>
+                    <div className="flex gap-2">
+                      <input value={recipeForm.url} onChange={e=>setRecipeForm(f=>({...f,url:e.target.value}))}
+                        placeholder="Recipe link (optional)"
+                        className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400 text-slate-900 bg-white"/>
+                      <input value={recipeForm.time} onChange={e=>setRecipeForm(f=>({...f,time:e.target.value}))}
+                        placeholder="Time"
+                        className="w-20 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400 text-slate-900 bg-white"/>
+                    </div>
+                    <textarea value={recipeForm.ingredients} onChange={e=>setRecipeForm(f=>({...f,ingredients:e.target.value}))}
+                      placeholder="Ingredients, one per line (feeds the grocery list)"
+                      className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-slate-400 text-slate-900 bg-white"
+                      style={{height:90}}/>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={()=>{setShowAddRecipe(false);setRecipeForm({name:"",url:"",time:"",ingredients:""});}}
+                        className="px-3 py-1.5 text-xs font-bold text-stone-500 hover:text-slate-900">Cancel</button>
+                      <button onClick={addRecipe} disabled={!recipeForm.name.trim()}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                        <Plus className="w-3.5 h-3.5"/>Save recipe
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <SectionHeader icon={ShoppingCart} title="Grocery list"/>
