@@ -1084,7 +1084,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                   <p className="text-sm text-stone-200">{mealsPlanned} of 7 dinners planned</p>
                   {Object.keys(groceryList).length>0&&<p className="text-sm text-stone-200">Grocery list ready ({groceryAllItems.length} items)</p>}
                   <p className="text-sm text-stone-200">{coverageSet} of 7 days with kid coverage set</p>
-                  <p className="text-sm text-stone-200">Next date: {NEXT_DATE_NIGHT.label} ({daysUntilDate}d away)</p>
+                  {nextDateNight&&(()=>{ const d=Math.round((nextDateNight.date-new Date())/(1000*60*60*24)); return <p className="text-sm text-stone-200">Next date: {nextDateNight.label} ({d<=0?"today":d===1?"tomorrow":d+"d away"})</p>; })()}
                   {conflictDays.length>0&&<p className="text-sm text-amber-300">{conflictDays.length} coverage gap{conflictDays.length>1?"s":""} remaining</p>}
                 </div>
               </div>

@@ -6,8 +6,8 @@ import FamilySOUnion from "./FamilySOUnion";
 import { Heart, Bell, BellOff } from "lucide-react";
 
 const ALLOWED_EMAILS = [
-  // "kelly@gmail.com",
-  // "kevin@gmail.com",
+  "kellymdonoho@gmail.com",
+  "kdonoho1@gmail.com",
 ];
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || "";
