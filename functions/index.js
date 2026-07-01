@@ -47,6 +47,12 @@ exports.sundayMeetingReminder = onSchedule(
     const response = await messaging.sendEachForMulticast(message);
     console.log(`Sent ${response.successCount} / ${tokens.length} notifications`);
 
+    console.log(`Sent ${response.successCount} / ${tokens.length} notifications`);
+response.responses.forEach((r, i) => {
+  if (!r.success) console.error(`Token ${i} failed:`, r.error);
+  else console.log(`Token ${i} delivered:`, r.messageId);
+});
+    
     // Clean up any tokens that are no longer valid
     const failedTokens = [];
     response.responses.forEach((resp, idx) => {
