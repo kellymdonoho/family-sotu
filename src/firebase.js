@@ -23,9 +23,11 @@ export async function requestNotificationPermission(vapidKey) {
   try {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") return null;
+       const swReg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js")
+      ?? await navigator.serviceWorker.register("/firebase-messaging-sw.js");
     const token = await getToken(messaging, {
       vapidKey,
-      serviceWorkerRegistration: await navigator.serviceWorker.getRegistration(),
+      serviceWorkerRegistration: swReg,
     });
     return token;
   } catch (e) {
