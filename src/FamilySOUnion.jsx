@@ -256,6 +256,15 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const [showAddRecipe,setShowAddRecipe]= useState(false);
   const [recipeForm,setRecipeForm]      = useState({name:"",url:"",time:"",ingredients:""});
 
+  // AI (Phase 3): recipe import + meal suggestions
+  const [importing,setImporting]        = useState(false);
+  const [importError,setImportError]    = useState("");
+  const [showImportText,setShowImportText] = useState(false);
+  const [importText,setImportText]      = useState("");
+  const [aiSuggestions,setAiSuggestions]= useState([]);
+  const [aiLoading,setAiLoading]        = useState(false);
+  const [aiError,setAiError]            = useState("");
+
   // ── FIRESTORE LISTENERS ───────────────────────────────────────────────────
   useEffect(()=>{
     // Current week
@@ -471,6 +480,37 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     const u=recipes.filter(r=>r.id!==id);
     setRecipes(u);
     try { await setDoc(doc(db,"meta","recipes"),{list:u},{merge:true}); } catch(e){ console.error(e); }
+  };
+
+  const importRecipe = async(payload)=>{
+    setImporting(true); setImportError("");
+    try {
+      const res=await fetch("/api/import-recipe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error||"Import failed");
+      if(!data.name && (!data.ingredients||!data.ingredients.length)) throw new Error("Couldn't find a recipe there. Try pasting the text instead.");
+      setRecipeForm(f=>({
+        name:data.name||f.name,
+        url:payload.url||f.url,
+        time:data.time||f.time,
+        ingredients:(data.ingredients||[]).join("\n")||f.ingredients,
+      }));
+    } catch(e){ setImportError(e.message); }
+    setImporting(false);
+  };
+
+  const fetchSuggestions = async()=>{
+    setAiLoading(true); setAiError("");
+    try {
+      const liked=Object.entries(mealRatings).filter(([,v])=>v==="liked").map(([k])=>k);
+      const disliked=Object.entries(mealRatings).filter(([,v])=>v==="disliked").map(([k])=>k);
+      const recent=Object.values(meals).filter(Boolean);
+      const res=await fetch("/api/suggest-meals",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({liked,disliked,recent})});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error||"Request failed");
+      setAiSuggestions(data.suggestions||[]);
+    } catch(e){ setAiError(e.message); }
+    setAiLoading(false);
   };
 
   const setMealFb = async(key,rating)=>{
@@ -888,6 +928,29 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                           <button onClick={()=>setSelectedMealDay(null)}><X className="w-4 h-4 text-stone-400 hover:text-white"/></button>
                         </div>
                         <div className="divide-y divide-stone-100 max-h-72 overflow-y-auto">
+                          <div className="px-4 py-2.5">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5"><Sparkles className="w-3 h-3 text-amber-500"/>AI ideas</p>
+                              <button onClick={fetchSuggestions} disabled={aiLoading}
+                                className="text-xs font-bold text-blue-600 hover:text-blue-700 disabled:opacity-40 flex items-center gap-1">
+                                {aiLoading?<div className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin"/>:<RotateCcw className="w-3 h-3"/>}
+                                {aiSuggestions.length?"Refresh":"Suggest"}
+                              </button>
+                            </div>
+                            {aiError&&<p className="text-xs text-rose-600 mb-1">{aiError}</p>}
+                            {aiSuggestions.map((s,i)=>(
+                              <div key={"ai"+i} className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
+                                onClick={()=>{const u={...mealEdits,[day.key]:s.name};setMealEdits(u);autoSaveMeals(u);setSelectedMealDay(null);}}>
+                                <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0"/>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-slate-800">{s.name}</p>
+                                  {s.note&&<p className="text-xs text-stone-400 truncate">{s.note}</p>}
+                                </div>
+                                {s.time&&<span className="text-xs text-stone-400 flex-shrink-0">{s.time}</span>}
+                              </div>
+                            ))}
+                            {!aiSuggestions.length&&!aiLoading&&!aiError&&<p className="text-xs text-stone-400">Tap Suggest for ideas based on what you like.</p>}
+                          </div>
                           {recipes.length>0&&(
                             <div className="px-4 py-2.5">
                               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Your recipes</p>
@@ -955,6 +1018,30 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                         placeholder="Time"
                         className="w-20 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400 text-slate-900 bg-white"/>
                     </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <button onClick={()=>importRecipe({url:recipeForm.url})} disabled={importing||!recipeForm.url.trim()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-blue-200 bg-blue-50 text-blue-600 text-xs font-bold rounded-xl hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        {importing?<div className="w-3.5 h-3.5 border border-blue-600 border-t-transparent rounded-full animate-spin"/>:<Sparkles className="w-3.5 h-3.5"/>}
+                        Import from link
+                      </button>
+                      <button onClick={()=>setShowImportText(v=>!v)} className="text-xs font-semibold text-stone-500 hover:text-slate-900">
+                        {showImportText?"hide paste box":"or paste text"}
+                      </button>
+                    </div>
+                    {showImportText&&(
+                      <div className="space-y-2">
+                        <textarea value={importText} onChange={e=>setImportText(e.target.value)}
+                          placeholder="Paste the full recipe text here, then Extract..."
+                          className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-slate-400 text-slate-900 bg-white"
+                          style={{height:80}}/>
+                        <button onClick={()=>importRecipe({text:importText})} disabled={importing||!importText.trim()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-blue-200 bg-blue-50 text-blue-600 text-xs font-bold rounded-xl hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                          {importing?<div className="w-3.5 h-3.5 border border-blue-600 border-t-transparent rounded-full animate-spin"/>:<Sparkles className="w-3.5 h-3.5"/>}
+                          Extract from text
+                        </button>
+                      </div>
+                    )}
+                    {importError&&<p className="text-xs text-rose-600">{importError}</p>}
                     <textarea value={recipeForm.ingredients} onChange={e=>setRecipeForm(f=>({...f,ingredients:e.target.value}))}
                       placeholder="Ingredients, one per line (feeds the grocery list)"
                       className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-slate-400 text-slate-900 bg-white"
