@@ -1,7 +1,7 @@
 // Vercel serverless function: suggest dinner ideas with Claude, based on the
 // family's liked/disliked meals. ANTHROPIC_API_KEY stays server-side.
 
-const MODEL = "claude-3-5-haiku-latest";
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
 
 async function askClaude(apiKey, prompt) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {

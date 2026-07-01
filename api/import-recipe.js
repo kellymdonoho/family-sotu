@@ -2,7 +2,7 @@
 // Tries structured recipe data first (free, reliable), then falls back to Claude.
 // ANTHROPIC_API_KEY stays server-side (no VITE_ prefix) so it never reaches the browser.
 
-const MODEL = "claude-3-5-haiku-latest";
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
 
 function stripHtml(html) {
   return html
