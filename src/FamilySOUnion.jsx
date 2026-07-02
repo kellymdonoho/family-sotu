@@ -515,6 +515,21 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     setAiLoading(false);
   };
 
+  // Pick an AI suggestion for a day, and save its ingredients to the recipe
+  // library so the grocery generator can use them (avoids "Add manually").
+  const useAiSuggestion = async(dayKey,s)=>{
+    const u={...mealEdits,[dayKey]:s.name};
+    setMealEdits(u); autoSaveMeals(u); setSelectedMealDay(null);
+    if(s.ingredients&&s.ingredients.length){
+      const norm=normalizeMeal(s.name);
+      if(!recipes.some(r=>normalizeMeal(r.name)===norm)){
+        const nu=[...recipes,{id:uid(),name:s.name,url:"",time:s.time||"",ingredients:s.ingredients}];
+        setRecipes(nu);
+        try { await setDoc(doc(db,"meta","recipes"),{list:nu},{merge:true}); } catch(e){ console.error(e); }
+      }
+    }
+  };
+
   const sendToInstacart = async()=>{
     setInstacartLoading(true); setInstacartError("");
     try {
@@ -955,7 +970,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                             {aiError&&<p className="text-xs text-rose-600 mb-1">{aiError}</p>}
                             {aiSuggestions.map((s,i)=>(
                               <div key={"ai"+i} className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
-                                onClick={()=>{const u={...mealEdits,[day.key]:s.name};setMealEdits(u);autoSaveMeals(u);setSelectedMealDay(null);}}>
+                                onClick={()=>useAiSuggestion(day.key,s)}>
                                 <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0"/>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-semibold text-slate-800">{s.name}</p>
