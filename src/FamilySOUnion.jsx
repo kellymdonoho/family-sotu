@@ -28,36 +28,6 @@ const MAINTENANCE = {
   11:[{id:"dc1",task:"Replace furnace filters",cat:"HVAC",p:"high"},{id:"dc2",task:"Check exterior lights & fire safety",cat:"Safety",p:"medium"},{id:"dc3",task:"Clear exterior drains before freeze",cat:"Plumbing",p:"medium"},{id:"dc4",task:"Inspect attic insulation",cat:"Insulation",p:"medium"}],
 };
 
-// ── MEALS ─────────────────────────────────────────────────────────────────────
-const MEAL_SUGGESTIONS = [
-  { category:"Quick - 30 min", meals:[
-    {name:"Ground beef tacos",time:"20 min",url:"https://www.allrecipes.com/recipe/148446/"},
-    {name:"Sheet pan chicken fajitas",time:"25 min",url:"https://www.spendwithpennies.com/sheet-pan-chicken-fajitas/"},
-    {name:"Spaghetti & meatballs",time:"30 min",url:"https://pinchofyum.com/easy-homemade-meatballs"},
-    {name:"Chicken quesadillas",time:"15 min",url:"https://www.allrecipes.com/recipe/143874/"},
-    {name:"Teriyaki salmon bowls",time:"20 min",url:"https://pinchofyum.com/teriyaki-salmon-bowls"},
-  ]},
-  { category:"Kid favorites", meals:[
-    {name:"Homemade pizza night",time:"30 min",url:"https://pinchofyum.com/the-best-pizza-dough-recipe"},
-    {name:"Mac & cheese",time:"20 min",url:"https://www.allrecipes.com/recipe/11679/"},
-    {name:"Chicken nuggets & fries",time:"25 min",url:"https://www.allrecipes.com/recipe/234058/"},
-    {name:"Pancakes for dinner",time:"20 min",url:"https://www.allrecipes.com/recipe/21014/"},
-    {name:"Chicken fried rice",time:"20 min",url:"https://www.allrecipes.com/recipe/16954/"},
-  ]},
-  { category:"Protein-forward", meals:[
-    {name:"Greek chicken bowls",time:"30 min",url:"https://pinchofyum.com/greek-chicken-bowls"},
-    {name:"Garlic butter salmon",time:"20 min",url:"https://www.spendwithpennies.com/garlic-butter-salmon/"},
-    {name:"Turkey taco bowls",time:"20 min",url:"https://pinchofyum.com/turkey-taco-bowls"},
-    {name:"Lemon herb chicken",time:"30 min",url:"https://www.spendwithpennies.com/baked-lemon-chicken/"},
-  ]},
-  { category:"Slow cooker", meals:[
-    {name:"Pot roast",time:"8 hr",url:"https://www.allrecipes.com/recipe/25678/"},
-    {name:"Pulled pork tacos",time:"8 hr",url:"https://www.allrecipes.com/recipe/79503/"},
-    {name:"Slow cooker chicken tacos",time:"6 hr",url:"https://pinchofyum.com/slow-cooker-chicken-tacos"},
-    {name:"Beef chili",time:"6 hr",url:"https://www.allrecipes.com/recipe/25352/"},
-  ]},
-];
-
 // ── CHECKLIST ─────────────────────────────────────────────────────────────────
 const CHECKLIST_SECTIONS = [
   { id:"planning", title:"Date planning & details", items:[
@@ -1123,23 +1093,6 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                               ))}
                             </div>
                           )}
-                          {MEAL_SUGGESTIONS.map(cat=>(
-                            <div key={cat.category} className="px-4 py-2.5">
-                              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">{cat.category}</p>
-                              {cat.meals.map(meal=>(
-                                <div key={meal.name} className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
-                                  onClick={()=>{const u={...mealEdits,[day.key]:meal.name};setMealEdits(u);autoSaveMeals(u);setSelectedMealDay(null);}}>
-                                  {mealRatings[normalizeMeal(meal.name)]==="liked"&&<Star className="w-3 h-3 text-amber-500 fill-amber-500 flex-shrink-0"/>}
-                                  <span className="flex-1 text-sm font-semibold text-slate-800">{meal.name}</span>
-                                  <span className="text-xs text-stone-400">{meal.time}</span>
-                                  <a href={meal.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
-                                    className="p-1 text-stone-400 hover:text-blue-600 rounded-lg transition-colors">
-                                    <ExternalLink className="w-3 h-3"/>
-                                  </a>
-                                </div>
-                              ))}
-                            </div>
-                          ))}
                         </div>
                       </div>
                     )}
