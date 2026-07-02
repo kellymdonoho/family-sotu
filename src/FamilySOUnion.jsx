@@ -205,28 +205,46 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const [calEvents, setCalEvents]         = useState([]);
   const [calLoading, setCalLoading]       = useState(false);
   const [nextDateNight, setNextDateNight] = useState(null);
+  // Add-event form (writes to the family Google Calendar via /api/create-event)
+  const [showAddEvent,setShowAddEvent]    = useState(false);
+  const [eventForm,setEventForm]          = useState({title:"",date:"",allDay:false,startTime:"18:00",endTime:"",notes:"",who:"family"});
+  const [eventSaving,setEventSaving]      = useState(false);
+  const [eventError,setEventError]        = useState("");
 
   // Fetch calendar from Vercel serverless function (reads iCal privately server-side)
-  useEffect(()=>{
-    const fetchCalendar = async () => {
-      setCalLoading(true);
-      try {
-        const res = await fetch("/api/calendar");
-        if(!res.ok) throw new Error("Calendar fetch failed: "+res.status);
-        const data = await res.json();
-        const events = data.events || [];
-        setCalEvents(events);
-        const dateKeywords = ["date night","date with","💕","❤️","anniversary","dinner with","just us"];
-        const nd = events.find(e=>dateKeywords.some(k=>e.title.toLowerCase().includes(k)));
-        if(nd){
-          const d = new Date(nd.date+"T12:00:00");
-          setNextDateNight({ date:d, label:d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}), title:nd.title });
-        }
-      } catch(e){ console.error("Calendar error:",e); }
-      setCalLoading(false);
-    };
-    fetchCalendar();
+  const fetchCalendar = useCallback(async () => {
+    setCalLoading(true);
+    try {
+      const res = await fetch("/api/calendar");
+      if(!res.ok) throw new Error("Calendar fetch failed: "+res.status);
+      const data = await res.json();
+      const events = data.events || [];
+      setCalEvents(events);
+      const dateKeywords = ["date night","date with","💕","❤️","anniversary","dinner with","just us"];
+      const nd = events.find(e=>dateKeywords.some(k=>e.title.toLowerCase().includes(k)));
+      if(nd){
+        const d = new Date(nd.date+"T12:00:00");
+        setNextDateNight({ date:d, label:d.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}), title:nd.title });
+      }
+    } catch(e){ console.error("Calendar error:",e); }
+    setCalLoading(false);
   },[]);
+  useEffect(()=>{ fetchCalendar(); },[fetchCalendar]);
+
+  const submitEvent = async()=>{
+    const title=eventForm.title.trim();
+    if(!title||!eventForm.date){ setEventError("Add a title and date."); return; }
+    setEventSaving(true); setEventError("");
+    try {
+      const res=await fetch("/api/create-event",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...eventForm,title})});
+      const data=await res.json();
+      if(!res.ok||!data.ok) throw new Error(data.error||"Could not add the event.");
+      setEventForm({title:"",date:"",allDay:false,startTime:"18:00",endTime:"",notes:"",who:"family"});
+      setShowAddEvent(false);
+      setTimeout(fetchCalendar,1500); // give Google a moment, then refresh the list
+    } catch(e){ setEventError(e.message); }
+    setEventSaving(false);
+  };
 
   const [tab,setTab]                    = useState("debrief");
   const [tabsVisited,setTabsVisited]    = useState(new Set(["debrief"]));
@@ -834,6 +852,53 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                 <p className="text-sm font-semibold text-amber-800">{conflictDays.length} day{conflictDays.length>1?"s":""} with events need coverage assigned</p>
               </div>
             )}
+            {/* Add an event to the family calendar */}
+            <div>
+              <button onClick={()=>setShowAddEvent(v=>!v)}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-stone-200 text-slate-700 text-sm font-semibold rounded-2xl hover:bg-stone-50 transition-colors shadow-sm">
+                {showAddEvent?<X className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}
+                {showAddEvent?"Cancel":"Add to family calendar"}
+              </button>
+              {showAddEvent&&(
+                <div className="mt-2 bg-white border border-stone-200 rounded-2xl p-4 shadow-sm space-y-3">
+                  <input value={eventForm.title} onChange={e=>setEventForm(f=>({...f,title:e.target.value}))}
+                    placeholder="Event title" className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                  <div className="flex gap-2">
+                    <input type="date" value={eventForm.date} onChange={e=>setEventForm(f=>({...f,date:e.target.value}))}
+                      className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                    <label className="flex items-center gap-1.5 text-xs text-stone-500 px-2 whitespace-nowrap">
+                      <input type="checkbox" checked={eventForm.allDay} onChange={e=>setEventForm(f=>({...f,allDay:e.target.checked}))}/>
+                      All day
+                    </label>
+                  </div>
+                  {!eventForm.allDay&&(
+                    <div className="flex items-center gap-2">
+                      <input type="time" value={eventForm.startTime} onChange={e=>setEventForm(f=>({...f,startTime:e.target.value}))}
+                        className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                      <span className="text-xs text-stone-400">to</span>
+                      <input type="time" value={eventForm.endTime} onChange={e=>setEventForm(f=>({...f,endTime:e.target.value}))}
+                        className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    {["family","Kelly","Kevin"].map(opt=>(
+                      <button key={opt} onClick={()=>setEventForm(f=>({...f,who:opt}))}
+                        className={"flex-1 text-xs font-semibold py-1.5 rounded-full border transition-colors "+(eventForm.who===opt?"bg-slate-900 text-white border-slate-900":"border-stone-200 text-stone-400 hover:border-stone-400")}>
+                        {opt==="family"?"Family":opt}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea value={eventForm.notes} onChange={e=>setEventForm(f=>({...f,notes:e.target.value}))}
+                    placeholder="Notes (optional)" rows={2}
+                    className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400 resize-none"/>
+                  {eventError&&<p className="text-xs text-rose-600">{eventError}</p>}
+                  <button onClick={submitEvent} disabled={eventSaving||!eventForm.title.trim()||!eventForm.date}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 disabled:opacity-40 transition-colors">
+                    {eventSaving?"Adding...":<><Plus className="w-4 h-4"/>Add to calendar</>}
+                  </button>
+                </div>
+              )}
+            </div>
             <div>
               <SectionHeader icon={Users} title="Who has the kids"/>
               <div className="space-y-2">
