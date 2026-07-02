@@ -266,6 +266,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const [aiError,setAiError]            = useState("");
   const [instacartLoading,setInstacartLoading] = useState(false);
   const [instacartError,setInstacartError]     = useState("");
+  const [groceryShareStatus,setGroceryShareStatus] = useState("idle");
 
   // ── FIRESTORE LISTENERS ───────────────────────────────────────────────────
   useEffect(()=>{
@@ -541,6 +542,23 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
       else throw new Error("No link returned");
     } catch(e){ setInstacartError(e.message); }
     setInstacartLoading(false);
+  };
+
+  const shareGroceryList = async()=>{
+    const lines=["Grocery list"];
+    Object.entries(groceryList).forEach(([cat,items])=>{
+      lines.push("",cat.toUpperCase());
+      items.forEach(it=>lines.push("- "+it));
+    });
+    const text=lines.join("\n");
+    if(navigator.share){
+      try { await navigator.share({title:"Grocery list",text}); } catch(e){ /* share cancelled */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setGroceryShareStatus("copied"); setTimeout(()=>setGroceryShareStatus("idle"),2500);
+    } catch(e){ setGroceryShareStatus("error"); setTimeout(()=>setGroceryShareStatus("idle"),2500); }
   };
 
   const setMealFb = async(key,rating)=>{
@@ -1142,13 +1160,12 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                   )}
                   {Object.keys(groceryList).length>0&&(
                     <div className="mt-3">
-                      <button onClick={sendToInstacart} disabled={instacartLoading}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-                        {instacartLoading?<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<ShoppingCart className="w-4 h-4"/>}
-                        Shop on Instacart
+                      <button onClick={shareGroceryList}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors">
+                        {groceryShareStatus==="copied"?<><Check className="w-4 h-4"/>Copied!</>:<><Copy className="w-4 h-4"/>Copy / share list</>}
                       </button>
-                      {instacartError&&<p className="text-xs text-rose-600 mt-1.5">{instacartError}</p>}
-                      <p className="text-xs text-stone-400 mt-1.5">Opens Instacart with these items. Pick a store at checkout (Whole Foods isn't on Instacart).</p>
+                      {groceryShareStatus==="error"&&<p className="text-xs text-rose-600 mt-1.5">Couldn't copy. Try again.</p>}
+                      <p className="text-xs text-stone-400 mt-1.5">Opens your share sheet (or copies) so you can paste it into the Whole Foods, Amazon, or any grocery app.</p>
                     </div>
                   )}
                 </>
