@@ -1,31 +1,7 @@
 // Vercel serverless function: suggest dinner ideas with Claude, based on the
 // family's liked/disliked meals. ANTHROPIC_API_KEY stays server-side.
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
-
-async function askClaude(apiKey, prompt) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Claude API ${res.status}: ${t.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const text = (data.content || []).map((b) => b.text || "").join("").trim();
-  const jsonStr = text.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
-  return JSON.parse(jsonStr);
-}
+import { callClaude, parseJson } from "./_anthropic.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -43,7 +19,8 @@ Recently made (do not repeat these): ${recent.length ? recent.join(", ") : "none
 Return ONLY minified JSON: {"suggestions":[{"name":"","time":"","note":""}]}. "time" like "30 min". "note" is a short reason, max 8 words.`;
 
   try {
-    const result = await askClaude(apiKey, prompt);
+    const raw = await callClaude(apiKey, prompt);
+    const result = parseJson(raw);
     const suggestions = Array.isArray(result.suggestions)
       ? result.suggestions.slice(0, 12).map((s) => ({
           name: (s.name || "").toString(),

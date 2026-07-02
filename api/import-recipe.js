@@ -2,7 +2,7 @@
 // Tries structured recipe data first (free, reliable), then falls back to Claude.
 // ANTHROPIC_API_KEY stays server-side (no VITE_ prefix) so it never reaches the browser.
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-20241022";
+import { callClaude, parseJson } from "./_anthropic.js";
 
 function stripHtml(html) {
   return html
@@ -36,33 +36,6 @@ function parseJsonLdRecipe(html) {
   return null;
 }
 
-async function askClaude(apiKey, content) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1024,
-      messages: [{
-        role: "user",
-        content: `Extract the recipe from the content below. Return ONLY minified JSON with this exact shape: {"name":"","time":"","ingredients":[]}. "time" is like "30 min" or "". "ingredients" are strings that include quantities. If the content is not a recipe, return {"name":"","time":"","ingredients":[]}.\n\nCONTENT:\n${content.slice(0, 12000)}`,
-      }],
-    }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Claude API ${res.status}: ${t.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const text = (data.content || []).map((b) => b.text || "").join("").trim();
-  const jsonStr = text.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
-  return JSON.parse(jsonStr);
-}
-
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -86,7 +59,12 @@ export default async function handler(req, res) {
     } else {
       return res.status(400).json({ error: "Provide a url or text" });
     }
-    const result = await askClaude(apiKey, content);
+
+    const raw = await callClaude(
+      apiKey,
+      `Extract the recipe from the content below. Return ONLY minified JSON with this exact shape: {"name":"","time":"","ingredients":[]}. "time" is like "30 min" or "". "ingredients" are strings that include quantities. If the content is not a recipe, return {"name":"","time":"","ingredients":[]}.\n\nCONTENT:\n${content.slice(0, 12000)}`
+    );
+    const result = parseJson(raw);
     res.json({
       name: (result.name || "").toString(),
       time: (result.time || "").toString(),
