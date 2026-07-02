@@ -545,12 +545,10 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   };
 
   const shareGroceryList = async()=>{
-    const lines=["Grocery list"];
-    Object.entries(groceryList).forEach(([cat,items])=>{
-      lines.push("",cat.toUpperCase());
-      items.forEach(it=>lines.push("- "+it));
-    });
-    const text=lines.join("\n");
+    // Clean one-item-per-line (no headers/bullets, skip placeholders) so it
+    // pastes perfectly into AnyList and other grocery apps.
+    const items=Object.entries(groceryList).filter(([cat])=>cat!=="Add manually").flatMap(([,arr])=>arr);
+    const text=items.join("\n");
     if(navigator.share){
       try { await navigator.share({title:"Grocery list",text}); } catch(e){ /* share cancelled */ }
       return;
@@ -1165,7 +1163,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                         {groceryShareStatus==="copied"?<><Check className="w-4 h-4"/>Copied!</>:<><Copy className="w-4 h-4"/>Copy / share list</>}
                       </button>
                       {groceryShareStatus==="error"&&<p className="text-xs text-rose-600 mt-1.5">Couldn't copy. Try again.</p>}
-                      <p className="text-xs text-stone-400 mt-1.5">Opens your share sheet (or copies) so you can paste it into the Whole Foods, Amazon, or any grocery app.</p>
+                      <p className="text-xs text-stone-400 mt-1.5">One item per line, ready to paste into AnyList (then order from King Soopers, Safeway, or Amazon Fresh) or any grocery app.</p>
                     </div>
                   )}
                 </>
