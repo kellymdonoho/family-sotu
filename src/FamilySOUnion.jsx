@@ -264,6 +264,8 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const [aiSuggestions,setAiSuggestions]= useState([]);
   const [aiLoading,setAiLoading]        = useState(false);
   const [aiError,setAiError]            = useState("");
+  const [instacartLoading,setInstacartLoading] = useState(false);
+  const [instacartError,setInstacartError]     = useState("");
 
   // ── FIRESTORE LISTENERS ───────────────────────────────────────────────────
   useEffect(()=>{
@@ -511,6 +513,19 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
       setAiSuggestions(data.suggestions||[]);
     } catch(e){ setAiError(e.message); }
     setAiLoading(false);
+  };
+
+  const sendToInstacart = async()=>{
+    setInstacartLoading(true); setInstacartError("");
+    try {
+      const items=Object.entries(groceryList).filter(([cat])=>cat!=="Add manually").flatMap(([,arr])=>arr);
+      const res=await fetch("/api/instacart",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({items})});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error||"Request failed");
+      if(data.url) window.open(data.url,"_blank","noopener");
+      else throw new Error("No link returned");
+    } catch(e){ setInstacartError(e.message); }
+    setInstacartLoading(false);
   };
 
   const setMealFb = async(key,rating)=>{
@@ -1108,6 +1123,17 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                           })}
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {Object.keys(groceryList).length>0&&(
+                    <div className="mt-3">
+                      <button onClick={sendToInstacart} disabled={instacartLoading}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                        {instacartLoading?<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<ShoppingCart className="w-4 h-4"/>}
+                        Shop on Instacart
+                      </button>
+                      {instacartError&&<p className="text-xs text-rose-600 mt-1.5">{instacartError}</p>}
+                      <p className="text-xs text-stone-400 mt-1.5">Opens Instacart with these items. Pick a store at checkout (Whole Foods isn't on Instacart).</p>
                     </div>
                   )}
                 </>
