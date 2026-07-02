@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 Meals they love (lean toward this style): ${liked.length ? liked.join(", ") : "n/a"}.
 Meals to avoid: ${disliked.length ? disliked.join(", ") : "none"}.
 Recently made (do not repeat these): ${recent.length ? recent.join(", ") : "none"}.
-Return ONLY minified JSON: {"suggestions":[{"name":"","time":"","note":"","ingredients":[]}]}. "time" like "30 min". "note" is a short reason, max 8 words. "ingredients" is the full grocery list for that dinner as strings with quantities (e.g. "Ground beef, 1.5 lbs").`;
+Return ONLY minified JSON: {"suggestions":[{"name":"","time":"","note":"","ingredients":[],"steps":[]}]}. "time" like "30 min". "note" is a short reason, max 8 words. "ingredients" is the full grocery list for that dinner as strings with quantities (e.g. "Ground beef, 1.5 lbs"). "steps" is the cooking instructions as an array of short numbered-free strings, 4-8 steps, using only the ingredients listed.`;
 
   try {
     const raw = await callClaude(apiKey, prompt, 2048);
@@ -27,6 +27,7 @@ Return ONLY minified JSON: {"suggestions":[{"name":"","time":"","note":"","ingre
           time: (s.time || "").toString(),
           note: (s.note || "").toString(),
           ingredients: Array.isArray(s.ingredients) ? s.ingredients.map(String) : [],
+          steps: Array.isArray(s.steps) ? s.steps.map(String) : [],
         })).filter((s) => s.name)
       : [];
     res.json({ suggestions });

@@ -312,6 +312,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const [aiSuggestions,setAiSuggestions]= useState([]);
   const [aiLoading,setAiLoading]        = useState(false);
   const [aiError,setAiError]            = useState("");
+  const [openRecipe,setOpenRecipe]      = useState(null);
   const [instacartLoading,setInstacartLoading] = useState(false);
   const [instacartError,setInstacartError]     = useState("");
   const [groceryShareStatus,setGroceryShareStatus] = useState("idle");
@@ -572,7 +573,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     if(s.ingredients&&s.ingredients.length){
       const norm=normalizeMeal(s.name);
       if(!recipes.some(r=>normalizeMeal(r.name)===norm)){
-        const nu=[...recipes,{id:uid(),name:s.name,url:"",time:s.time||"",ingredients:s.ingredients}];
+        const nu=[...recipes,{id:uid(),name:s.name,url:"",time:s.time||"",ingredients:s.ingredients,steps:s.steps||[]}];
         setRecipes(nu);
         try { await setDoc(doc(db,"meta","recipes"),{list:nu},{merge:true}); } catch(e){ console.error(e); }
       }
@@ -1041,14 +1042,38 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                             </div>
                             {aiError&&<p className="text-xs text-rose-600 mb-1">{aiError}</p>}
                             {aiSuggestions.map((s,i)=>(
-                              <div key={"ai"+i} className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
-                                onClick={()=>useAiSuggestion(day.key,s)}>
-                                <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0"/>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-slate-800">{s.name}</p>
-                                  {s.note&&<p className="text-xs text-stone-400 truncate">{s.note}</p>}
+                              <div key={"ai"+i}>
+                                <div className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
+                                  onClick={()=>useAiSuggestion(day.key,s)}>
+                                  <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0"/>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-slate-800">{s.name}</p>
+                                    {s.note&&<p className="text-xs text-stone-400 truncate">{s.note}</p>}
+                                  </div>
+                                  {s.time&&<span className="text-xs text-stone-400 flex-shrink-0">{s.time}</span>}
+                                  {((s.steps&&s.steps.length)||(s.ingredients&&s.ingredients.length))&&(
+                                    <button onClick={e=>{e.stopPropagation();setOpenRecipe(openRecipe==="ai"+i?null:"ai"+i);}}
+                                      className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex-shrink-0 px-1">
+                                      {openRecipe==="ai"+i?"Hide":"Recipe"}
+                                    </button>
+                                  )}
                                 </div>
-                                {s.time&&<span className="text-xs text-stone-400 flex-shrink-0">{s.time}</span>}
+                                {openRecipe==="ai"+i&&(
+                                  <div className="ml-6 mr-2 mb-2 mt-0.5 rounded-xl bg-amber-50 border border-amber-100 p-3 text-left">
+                                    {s.ingredients&&s.ingredients.length>0&&(<>
+                                      <p className="text-[11px] font-bold text-amber-700 uppercase tracking-widest mb-1">Ingredients</p>
+                                      <ul className="text-xs text-stone-600 space-y-0.5 mb-2 list-disc pl-4">
+                                        {s.ingredients.map((ing,j)=><li key={"ing"+j}>{ing}</li>)}
+                                      </ul>
+                                    </>)}
+                                    {s.steps&&s.steps.length>0&&(<>
+                                      <p className="text-[11px] font-bold text-amber-700 uppercase tracking-widest mb-1">Steps</p>
+                                      <ol className="text-xs text-stone-600 space-y-1 list-decimal pl-4">
+                                        {s.steps.map((st,j)=><li key={"st"+j}>{st}</li>)}
+                                      </ol>
+                                    </>)}
+                                  </div>
+                                )}
                               </div>
                             ))}
                             {!aiSuggestions.length&&!aiLoading&&!aiError&&<p className="text-xs text-stone-400">Tap Suggest for ideas based on what you like.</p>}
@@ -1057,19 +1082,43 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                             <div className="px-4 py-2.5">
                               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1.5">Your recipes</p>
                               {recipes.map(r=>(
-                                <div key={r.id} className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
-                                  onClick={()=>{const u={...mealEdits,[day.key]:r.name};setMealEdits(u);autoSaveMeals(u);setSelectedMealDay(null);}}>
-                                  {mealRatings[normalizeMeal(r.name)]==="liked"&&<Star className="w-3 h-3 text-amber-500 fill-amber-500 flex-shrink-0"/>}
-                                  <span className="flex-1 text-sm font-semibold text-slate-800">{r.name}</span>
-                                  {r.time&&<span className="text-xs text-stone-400">{r.time}</span>}
-                                  {r.url&&<a href={r.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
-                                    className="p-1 text-stone-400 hover:text-blue-600 rounded-lg transition-colors">
-                                    <ExternalLink className="w-3 h-3"/>
-                                  </a>}
-                                  <button onClick={e=>{e.stopPropagation();removeRecipe(r.id);}}
-                                    className="p-1 text-stone-300 hover:text-rose-500 rounded-lg transition-colors">
-                                    <X className="w-3 h-3"/>
-                                  </button>
+                                <div key={r.id}>
+                                  <div className="flex items-center gap-2 py-1.5 rounded-xl hover:bg-stone-50 px-2 cursor-pointer"
+                                    onClick={()=>{const u={...mealEdits,[day.key]:r.name};setMealEdits(u);autoSaveMeals(u);setSelectedMealDay(null);}}>
+                                    {mealRatings[normalizeMeal(r.name)]==="liked"&&<Star className="w-3 h-3 text-amber-500 fill-amber-500 flex-shrink-0"/>}
+                                    <span className="flex-1 text-sm font-semibold text-slate-800">{r.name}</span>
+                                    {r.time&&<span className="text-xs text-stone-400">{r.time}</span>}
+                                    {((r.steps&&r.steps.length)||(r.ingredients&&r.ingredients.length))&&(
+                                      <button onClick={e=>{e.stopPropagation();setOpenRecipe(openRecipe===r.id?null:r.id);}}
+                                        className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex-shrink-0 px-1">
+                                        {openRecipe===r.id?"Hide":"Recipe"}
+                                      </button>
+                                    )}
+                                    {r.url&&<a href={r.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+                                      className="p-1 text-stone-400 hover:text-blue-600 rounded-lg transition-colors">
+                                      <ExternalLink className="w-3 h-3"/>
+                                    </a>}
+                                    <button onClick={e=>{e.stopPropagation();removeRecipe(r.id);}}
+                                      className="p-1 text-stone-300 hover:text-rose-500 rounded-lg transition-colors">
+                                      <X className="w-3 h-3"/>
+                                    </button>
+                                  </div>
+                                  {openRecipe===r.id&&(
+                                    <div className="ml-6 mr-2 mb-2 mt-0.5 rounded-xl bg-amber-50 border border-amber-100 p-3 text-left">
+                                      {r.ingredients&&r.ingredients.length>0&&(<>
+                                        <p className="text-[11px] font-bold text-amber-700 uppercase tracking-widest mb-1">Ingredients</p>
+                                        <ul className="text-xs text-stone-600 space-y-0.5 mb-2 list-disc pl-4">
+                                          {r.ingredients.map((ing,j)=><li key={"ring"+j}>{ing}</li>)}
+                                        </ul>
+                                      </>)}
+                                      {r.steps&&r.steps.length>0&&(<>
+                                        <p className="text-[11px] font-bold text-amber-700 uppercase tracking-widest mb-1">Steps</p>
+                                        <ol className="text-xs text-stone-600 space-y-1 list-decimal pl-4">
+                                          {r.steps.map((st,j)=><li key={"rst"+j}>{st}</li>)}
+                                        </ol>
+                                      </>)}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
