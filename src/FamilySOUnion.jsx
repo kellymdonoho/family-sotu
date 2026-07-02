@@ -118,6 +118,32 @@ const categorizeIngredient = (item) => {
   if (/(milk|cheese|butter|cream|yogurt|mozzarella|cheddar|parmesan|feta)/.test(s)) return "Dairy";
   return "Pantry";
 };
+// Split "Lime, 2" -> {num:2, unit:""}; "Ground beef, 1.5 lbs" -> {num:1.5, unit:"lbs"}
+const parseQty = (qtyStr) => {
+  const m = (qtyStr||"").trim().match(/^([\d.\/]+)\s*(.*)$/);
+  if (!m) return { num: null, unit: (qtyStr||"").trim() };
+  let num;
+  if (m[1].includes("/")) { const [a,b]=m[1].split("/").map(Number); num = b ? a/b : Number(a); }
+  else num = parseFloat(m[1]);
+  if (isNaN(num)) return { num: null, unit: (qtyStr||"").trim() };
+  return { num, unit: (m[2]||"").trim() };
+};
+// Combine same-named ingredient strings, summing quantities when units match
+const combineItems = (strings) => {
+  const name = strings[0].split(",")[0].trim();
+  const parts = strings.map(s => { const i = s.indexOf(","); return i===-1 ? "" : s.slice(i+1).trim(); });
+  const parsed = parts.map(parseQty);
+  const unitNorm = (u) => u.toLowerCase().replace(/s$/,"");
+  const numeric = parsed.filter(p => p.num !== null);
+  const units = new Set(parsed.map(p => unitNorm(p.unit)));
+  if (numeric.length === parsed.length && units.size === 1) {
+    const sum = numeric.reduce((a,p) => a + p.num, 0);
+    const disp = Number.isInteger(sum) ? String(sum) : String(Math.round(sum*100)/100);
+    return parsed[0].unit ? `${name}, ${disp} ${parsed[0].unit}` : `${name}, ${disp}`;
+  }
+  const distinct = [...new Set(parts.filter(Boolean))];
+  return distinct.length ? `${name}, ${distinct.join(" + ")}` : name;
+};
 const getMonday = (d) => { const date=new Date(d),dow=date.getDay(); date.setDate(date.getDate()-(dow===0?6:dow-1)); date.setHours(0,0,0,0); return date; };
 const fmtDateKey = (date) => { const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,"0"),d=String(date.getDate()).padStart(2,"0"); return y+"-"+m+"-"+d; };
 const subtractDays = (dateKey,n) => { const [y,m,d]=dateKey.split("-").map(Number); return fmtDateKey(new Date(y,m-1,d-n)); };
@@ -604,12 +630,21 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
       if(matchKey){
         Object.entries(lookup[matchKey]).forEach(([cat,items])=>{
           const target=combined[cat]!==undefined?cat:"Other";
-          items.forEach(item=>{ if(!combined[target].includes(item)) combined[target].push(item); });
+          items.forEach(item=>{ combined[target].push(item); });
         });
       } else { unmatched.push(meal); }
     });
     const result={};
-    Object.entries(combined).forEach(([k,v])=>{ if(v.length>0) result[k]=v; });
+    Object.entries(combined).forEach(([k,v])=>{
+      if(!v.length) return;
+      const groups={}; const order=[];
+      v.forEach(item=>{
+        const key=item.split(",")[0].trim().toLowerCase().replace(/s$/,"");
+        if(!groups[key]){ groups[key]=[]; order.push(key); }
+        groups[key].push(item);
+      });
+      result[k]=order.map(key=>combineItems(groups[key]));
+    });
     if(unmatched.length>0) result["Add manually"]=unmatched.map(m=>m+" - add ingredients manually");
     setGroceryList(result); setGroceryChecked({});
     persist("groceryList",result); persist("groceryChecked",{});
