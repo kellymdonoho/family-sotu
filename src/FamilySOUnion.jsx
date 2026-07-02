@@ -144,6 +144,28 @@ const combineItems = (strings) => {
   const distinct = [...new Set(parts.filter(Boolean))];
   return distinct.length ? `${name}, ${distinct.join(" + ")}` : name;
 };
+// Words too generic to identify a recipe on their own
+const RECIPE_STOP = new Set(["and","with","the","or","of","a","an","in","on","for","to","sheet","pan","style","homemade","easy","quick","baked","grilled","fried","roasted","slow","cooker","instant","pot","one","dinner","night","sauce","fresh","classic","best","bowl","bowls","plate"]);
+const recipeWords = (s) => (s||"").toLowerCase().replace(/[^a-z0-9\s]/g," ").split(/\s+/).filter(w=>w.length>2&&!RECIPE_STOP.has(w));
+// Match a planned meal to a recipe key: full-name match wins, otherwise
+// require strong overlap of the recipe's distinctive words (avoids matching
+// e.g. "chicken and rice" to "sheet pan chicken fajitas" on the word "chicken")
+const matchRecipeKey = (meal, keys) => {
+  const norm = (meal||"").toLowerCase();
+  let sub=null;
+  keys.forEach(k=>{ if(k && norm.includes(k) && (!sub || k.length>sub.length)) sub=k; });
+  if(sub) return sub;
+  const mw = new Set(recipeWords(meal));
+  let best=null, bestScore=0;
+  keys.forEach(k=>{
+    const kw = recipeWords(k);
+    if(!kw.length) return;
+    const shared = kw.filter(w=>mw.has(w)).length;
+    const need = Math.max(2, Math.ceil(kw.length*0.5));
+    if(shared>=need && shared>bestScore){ best=k; bestScore=shared; }
+  });
+  return best;
+};
 const getMonday = (d) => { const date=new Date(d),dow=date.getDay(); date.setDate(date.getDate()-(dow===0?6:dow-1)); date.setHours(0,0,0,0); return date; };
 const fmtDateKey = (date) => { const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,"0"),d=String(date.getDate()).padStart(2,"0"); return y+"-"+m+"-"+d; };
 const subtractDays = (dateKey,n) => { const [y,m,d]=dateKey.split("-").map(Number); return fmtDateKey(new Date(y,m-1,d-n)); };
@@ -625,8 +647,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     const combined={Produce:[],Protein:[],Dairy:[],Pantry:[],Other:[]};
     const unmatched=[];
     mealList.forEach(meal=>{
-      const norm=meal.toLowerCase();
-      const matchKey=Object.keys(lookup).find(k=>norm.includes(k)||k.split(" ").some(w=>w.length>4&&norm.includes(w)));
+      const matchKey=matchRecipeKey(meal, Object.keys(lookup));
       if(matchKey){
         Object.entries(lookup[matchKey]).forEach(([cat,items])=>{
           const target=combined[cat]!==undefined?cat:"Other";
