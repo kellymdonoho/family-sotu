@@ -15,8 +15,7 @@ import { Heart, Bell, BellOff, Mail } from "lucide-react";
 const USER_ROLES = {
   "kellymdonoho@gmail.com": "parent",
   "kdonoho1@gmail.com": "parent",
-  // Add mom's Yahoo email below, then redeploy:
-  // "mom@yahoo.com": "calendar",
+  "donna_durham@yahoo.com": "calendar",
 };
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || "";
