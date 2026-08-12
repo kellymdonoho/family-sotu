@@ -193,6 +193,73 @@ Both Kelly and Kevin need to do this to receive the Saturday reminder.
 
 ---
 
+## Granting family member access (e.g. Nana)
+
+The app supports two roles:
+- **Parent** (Kelly & Kevin) — full access to all tabs
+- **Calendar** — read-only access to the "This Week" tab only (drop-off/pick-up schedule + calendar events)
+
+This is useful for giving a grandparent or caregiver visibility into the weekly schedule without exposing meeting notes, decisions, or other private tabs.
+
+### Step 1: Enable Email/Password auth in Firebase (3 min)
+
+Google Sign-In only works with Google accounts. Family members with non-Google emails (Yahoo, iCloud, etc.) sign in with email + password instead.
+
+1. Go to **Firebase Console → Authentication → Sign-in method**
+2. Click **Email/Password** (not Email Link)
+3. Toggle **Enable** → **Save**
+
+### Step 2: Add their email to the app (2 min)
+
+1. Open `src/App.jsx` in your project folder
+2. Find the `USER_ROLES` block near the top
+3. Add the family member's email with the `"calendar"` role:
+```js
+const USER_ROLES = {
+  "kellymdonoho@gmail.com": "parent",
+  "kdonoho1@gmail.com": "parent",
+  "nana@yahoo.com": "calendar",   // ← add here
+};
+```
+4. Upload the changed file to GitHub (or push via git). Vercel redeploys in ~60 seconds.
+
+### Step 3: Have the family member create an account (1 min)
+
+1. They open your app URL in a browser
+2. On the sign-in screen, tap **"Sign in with email instead"**
+3. They enter their email and a password → tap **Create account**
+4. They're signed in and see only the calendar/drop-off schedule
+
+> **Note:** The first time a parent signs in after the update, the app automatically syncs the `USER_ROLES` map to Firestore so server-side security rules can enforce it (see below).
+
+### Step 4 (recommended): Lock down Firestore rules (5 min)
+
+By default, the app hides restricted tabs in the UI, but the database itself allows any signed-in user to read/write. To enforce the role restriction at the database level too:
+
+1. Go to **Firebase Console → Firestore Database → Rules**
+2. Replace everything with:
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function roleOf() {
+      return request.auth != null && exists(/databases/$(database)/documents/meta/roles)
+        ? get(/databases/$(database)/documents/meta/roles).data[request.auth.token.email]
+        : null;
+    }
+    match /{document=**} {
+      allow read: if roleOf() != null;
+      allow write: if roleOf() == 'parent';
+    }
+  }
+}
+```
+3. Click **Publish**
+
+> **Important:** A parent must sign in at least once BEFORE publishing these rules. The app creates the `meta/roles` document automatically on parent sign-in. If you publish the rules before that, all reads/writes will be denied (the document won't exist yet). If that happens, temporarily revert to the old rules, sign in as a parent, then re-publish.
+
+---
+
 ## Updating the app going forward
 
 Any time you want changes (new events, meals, anything):

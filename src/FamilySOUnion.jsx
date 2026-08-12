@@ -75,7 +75,25 @@ const CONNECTION_QUESTIONS = [
 ];
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const COVERAGE_OPTIONS = ["Kelly","Kevin","Nana & Grumpa","Anabel","Together","TBD"];
+// ── LOGISTICS: two-kid drop-off / pick-up coordination ────────────────────────
+// Lily is in kindergarten (M-Th 8:30–3:30, Fri 9:15–3:30).
+// Carter is in daycare.
+// Each weekday, both parents (and Nana & Grumpa) coordinate who handles each leg.
+const K_SCHEDULE = { 1:"8:30–3:30", 2:"8:30–3:30", 3:"8:30–3:30", 4:"8:30–3:30", 5:"9:15–3:30" };
+const DROPOFF_OPTIONS = ["Kelly", "Kevin", "Nana & Grumpa"];
+const PICKUP_OPTIONS  = ["Kelly", "Kevin", "Nana & Grumpa"];
+const AFTER_K_OPTIONS = ["Us", "Nana & Grumpa", "BASE", "Activity"];
+const PERSON_COLOR = {
+  Kelly:            { active: "bg-rose-500 text-white border-rose-500",     badge: "bg-rose-100 text-rose-700 border-rose-200" },
+  Kevin:            { active: "bg-blue-500 text-white border-blue-500",     badge: "bg-blue-100 text-blue-700 border-blue-200" },
+  "Nana & Grumpa":  { active: "bg-emerald-500 text-white border-emerald-500", badge: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+};
+const AFTER_K_COLOR = {
+  Us:               { active: "bg-violet-500 text-white border-violet-500",   badge: "bg-violet-100 text-violet-700 border-violet-200" },
+  "Nana & Grumpa":  { active: "bg-emerald-500 text-white border-emerald-500", badge: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  BASE:             { active: "bg-amber-500 text-white border-amber-500",     badge: "bg-amber-100 text-amber-700 border-amber-200" },
+  Activity:         { active: "bg-cyan-500 text-white border-cyan-500",       badge: "bg-cyan-100 text-cyan-700 border-cyan-200" },
+};
 const HOUSE_ICONS = {HVAC:Wind,Roof:Home,Safety:Shield,Plumbing:Droplets,Appliances:Wrench,Lawn:Leaf,Irrigation:Droplets,Exterior:Home,Snow:Snowflake,Cleaning:Sparkles,Insulation:Thermometer,Outdoor:Armchair,Pest:Bug};
 const PRIORITY_COLOR = {critical:"text-rose-600",high:"text-amber-600",medium:"text-stone-400",low:"text-stone-300"};
 
@@ -176,7 +194,8 @@ function SectionHeader({ icon:Icon, title, count }) {
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function FamilySOUnion({ db, user, onSignOut }) {
+export default function FamilySOUnion({ db, user, role, onSignOut }) {
+  const isCalendarOnly = role === "calendar";
   const today = useMemo(()=>new Date(),[]);
   const monthIdx = today.getMonth();
   const monthKey = monthIdx+"-"+today.getFullYear();
@@ -246,15 +265,15 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     setEventSaving(false);
   };
 
-  const [tab,setTab]                    = useState("debrief");
-  const [tabsVisited,setTabsVisited]    = useState(new Set(["debrief"]));
+  const [tab,setTab]                    = useState(isCalendarOnly ? "align" : "debrief");
+  const [tabsVisited,setTabsVisited]    = useState(new Set([isCalendarOnly ? "align" : "debrief"]));
   const [syncStatus,setSyncStatus]      = useState("loading"); // loading|synced|saving
 
   // Current week data
   const [wins,setWins]                  = useState({kelly:"",kevin:""});
   const [appreciation,setAppreciation]  = useState({kelly:"",kevin:""});
   const [decisions,setDecisions]        = useState([]);
-  const [coverage,setCoverage]          = useState({});
+  const [logistics,setLogistics]        = useState({});
   const [ownership,setOwnership]        = useState({});
   const [parking,setParking]            = useState("");
   const [meals,setMeals]                = useState({});
@@ -315,7 +334,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
         setWins(d.wins||{kelly:"",kevin:""});
         setAppreciation(d.appreciation||{kelly:"",kevin:""});
         setDecisions(d.decisions||[]);
-        setCoverage(d.coverage||{});
+        setLogistics(d.logistics||{});
         setOwnership(d.ownership||{});
         setParking(d.parking||"");
         setMeals(d.meals||{});
@@ -397,21 +416,36 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
   const thisWeekDecisions  = useMemo(()=>decisions.filter(d=>d.weekOf===weekId),[decisions,weekId]);
   const carriedInItems     = useMemo(()=>lastWeekDecisions.filter(d=>d.carriedToWeek===weekId),[lastWeekDecisions,weekId]);
 
-  const conflictDays = useMemo(()=>
-    planningWeek.filter(day=>{
-      const evts=eventsByDate[day.key]||[];
-      return evts.length>0&&(!coverage[day.key]||coverage[day.key]==="TBD");
-    }).map(d=>d.key),
-  [planningWeek,eventsByDate,coverage]);
+  // Days with incomplete logistics assignments (missing drop-off or pick-up)
+  const logisticsGaps = useMemo(()=>{
+    return planningWeek.filter(day=>{
+      const dow = new Date(day.key+"T12:00:00").getDay();
+      if (dow === 0 || dow === 6) return false; // weekends — no school logistics
+      const dl = logistics[day.key];
+      if (!dl) return true;
+      const lilyOk = dl.lily && dl.lily.dropoff && dl.lily.afterCare;
+      const carterOk = dl.carter && dl.carter.dropoff && dl.carter.pickup;
+      return !(lilyOk && carterOk);
+    }).map(d=>d.key);
+  },[planningWeek,logistics]);
+
+  const conflictDays = logisticsGaps;
 
   const houseDoneCount    = maintenanceTasks.filter(t=>houseDone[t.id]).length;
   const housePct          = maintenanceTasks.length?Math.round(houseDoneCount/maintenanceTasks.length*100):0;
   const totalCheckItems   = CHECKLIST_SECTIONS.reduce((s,sec)=>s+sec.items.length,0);
   const checkedCount      = Object.values(checklistState).filter(Boolean).length;
   const checklistPct      = totalCheckItems?Math.round(checkedCount/totalCheckItems*100):0;
-  const allTabsVisited    = ["debrief","align","plan","home","connect"].every(t=>tabsVisited.has(t));
+  const allTabsVisited    = isCalendarOnly
+    ? tabsVisited.has("align")
+    : ["debrief","align","plan","home","connect"].every(t=>tabsVisited.has(t));
   const mealsPlanned      = planningWeek.filter(d=>(mealEdits[d.key]||"").trim()).length;
-  const coverageSet       = planningWeek.filter(d=>coverage[d.key]&&coverage[d.key]!=="TBD").length;
+  const logisticsSet      = planningWeek.filter(d=>{
+    const dow = new Date(d.key+"T12:00:00").getDay();
+    if (dow === 0 || dow === 6) return false;
+    const dl = logistics[d.key];
+    return dl && dl.lily && dl.lily.dropoff && dl.lily.afterCare && dl.carter && dl.carter.dropoff && dl.carter.pickup;
+  }).length;
   const groceryAllItems   = useMemo(()=>Object.entries(groceryList).flatMap(([cat,items])=>items.map((_,i)=>cat+"-"+i)),[groceryList]);
   const groceryCheckedCount = groceryAllItems.filter(k=>groceryChecked[k]).length;
   const groceryPct        = groceryAllItems.length?Math.round(groceryCheckedCount/groceryAllItems.length*100):0;
@@ -453,9 +487,33 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     setLastWeekDecisions(u); await persistLastWeek("decisions",u);
   };
 
-  const saveCoverage = async(dateKey,val)=>{
-    const u={...coverage,[dateKey]:val===coverage[dateKey]?null:val};
-    setCoverage(u); await persist("coverage",u);
+  const saveLogistics = async(dateKey,child,field,val)=>{
+    const dayLog = logistics[dateKey] || {};
+    const childLog = dayLog[child] || {};
+    // Toggle off if clicking the same value
+    const newVal = childLog[field] === val ? null : val;
+    const u = {
+      ...logistics,
+      [dateKey]: {
+        ...dayLog,
+        [child]: { ...childLog, [field]: newVal },
+      },
+    };
+    setLogistics(u); await persist("logistics",u);
+  };
+
+  // Set a logistics field without toggling (used for text inputs like activity name)
+  const setLogisticsField = async(dateKey,child,field,val)=>{
+    const dayLog = logistics[dateKey] || {};
+    const childLog = dayLog[child] || {};
+    const u = {
+      ...logistics,
+      [dateKey]: {
+        ...dayLog,
+        [child]: { ...childLog, [field]: val },
+      },
+    };
+    setLogistics(u); await persist("logistics",u);
   };
 
   const saveOwnership = async(itemId,val)=>{
@@ -682,22 +740,15 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
     } catch(e){ setCopyStatus("error"); setTimeout(()=>setCopyStatus("idle"),2500); }
   };
 
-  const covColor={
-    Kelly:{active:"bg-rose-500 text-white border-rose-500",badge:"bg-rose-100 text-rose-700 border-rose-200"},
-    Kevin:{active:"bg-blue-500 text-white border-blue-500",badge:"bg-blue-100 text-blue-700 border-blue-200"},
-    "Nana & Grumpa":{active:"bg-emerald-500 text-white border-emerald-500",badge:"bg-emerald-100 text-emerald-700 border-emerald-200"},
-    Anabel:{active:"bg-amber-500 text-white border-amber-500",badge:"bg-amber-100 text-amber-700 border-amber-200"},
-    Together:{active:"bg-violet-500 text-white border-violet-500",badge:"bg-violet-100 text-violet-700 border-violet-200"},
-    TBD:{active:"bg-stone-400 text-white border-stone-400",badge:"bg-stone-100 text-stone-500 border-stone-200"},
-  };
-
-  const TABS=[
+  const ALL_TABS=[
     {id:"debrief",label:"Debrief",icon:Trophy},
     {id:"align",label:"This Week",icon:Calendar},
     {id:"plan",label:"Plan",icon:Utensils},
     {id:"home",label:"Home",icon:Home},
     {id:"connect",label:"Us",icon:Heart},
   ];
+  // Calendar-only role sees just the "This Week" tab
+  const TABS = isCalendarOnly ? ALL_TABS.filter(t=>t.id==="align") : ALL_TABS;
 
   // ── RENDER ───────────────────────────────────────────────────────────────
   if(syncStatus==="loading") return (
@@ -726,10 +777,10 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                   <LogOut className="w-3.5 h-3.5"/>
                 </button>
               </div>
-              {conflictDays.length>0&&(
+              {conflictDays.length>0&&!isCalendarOnly&&(
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0"/>
-                  {conflictDays.length} coverage gap{conflictDays.length>1?"s":""}
+                  {conflictDays.length} incomplete day{conflictDays.length>1?"s":""}
                 </div>
               )}
               {/* Calendar status */}
@@ -849,10 +900,11 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
             {conflictDays.length>0&&(
               <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-300 rounded-2xl px-4 py-3">
                 <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0"/>
-                <p className="text-sm font-semibold text-amber-800">{conflictDays.length} day{conflictDays.length>1?"s":""} with events need coverage assigned</p>
+                <p className="text-sm font-semibold text-amber-800">{conflictDays.length} weekday{conflictDays.length>1?"s":""} with incomplete drop-off / pick-up assignments</p>
               </div>
             )}
-            {/* Add an event to the family calendar */}
+            {/* Add an event to the family calendar — parents only */}
+            {!isCalendarOnly&&(
             <div>
               <button onClick={()=>setShowAddEvent(v=>!v)}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-stone-200 text-slate-700 text-sm font-semibold rounded-2xl hover:bg-stone-50 transition-colors shadow-sm">
@@ -899,31 +951,108 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                 </div>
               )}
             </div>
+            )}
+            {/* LOGISTICS GRID — two-kid drop-off / pick-up coordination */}
             <div>
-              <SectionHeader icon={Users} title="Who has the kids"/>
+              <SectionHeader icon={Users} title={isCalendarOnly ? "Drop-off & pick-up schedule" : "Drop-offs & pick-ups"} count={isCalendarOnly ? undefined : logisticsSet+" of 5 weekdays set"}/>
               <div className="space-y-2">
                 {planningWeek.map(day=>{
                   const events=eventsByDate[day.key]||[];
-                  const cov=coverage[day.key];
                   const isConflict=conflictDays.includes(day.key);
+                  const dow=new Date(day.key+"T12:00:00").getDay();
+                  const isWeekday = dow>=1 && dow<=5;
+                  const dl=logistics[day.key];
+                  const kTime = K_SCHEDULE[dow];
+
+                  // Helper to render a toggle row (parent) or a read-only badge (calendar-only)
+                  const renderToggle = (label, options, child, field, colorMap) => {
+                    const current = dl?.[child]?.[field];
+                    return (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-stone-500 w-16 flex-shrink-0">{label}</span>
+                        {isCalendarOnly ? (
+                          current ? (
+                            <span className={"text-xs px-2.5 py-0.5 rounded-full font-semibold border "+(colorMap[current]?.badge||"bg-stone-100 text-stone-600 border-stone-200")}>{current}</span>
+                          ) : (
+                            <span className="text-xs text-stone-300 italic">not set</span>
+                          )
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {options.map(opt=>(
+                              <button key={opt} onClick={()=>saveLogistics(day.key,child,field,opt)}
+                                className={"text-xs px-2.5 py-1 rounded-full font-semibold border transition-colors "+(current===opt?(colorMap[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
+                                {opt}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  };
+
                   return (
                     <div key={day.key} className={"bg-white border rounded-2xl p-3.5 shadow-sm "+(isConflict?"border-amber-300":"border-stone-200")}>
                       <div className="flex items-center gap-2 mb-2.5 flex-wrap">
                         <span className="text-sm font-bold text-slate-900 w-8">{day.label}</span>
                         <span className="text-xs text-stone-400">{day.dateStr}</span>
-                        {isConflict&&<span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">coverage needed</span>}
-                        {cov&&cov!=="TBD"&&<span className={"ml-auto text-xs font-bold px-2.5 py-0.5 rounded-full border "+(covColor[cov]?covColor[cov].badge:"")}>{cov}</span>}
+                        {isWeekday && kTime && <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">K: {kTime}</span>}
+                        {isConflict&&<span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">incomplete</span>}
                       </div>
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {COVERAGE_OPTIONS.map(opt=>(
-                          <button key={opt} onClick={()=>saveCoverage(day.key,opt)}
-                            className={"text-xs px-2.5 py-1 rounded-full font-semibold border transition-colors "+(cov===opt?(covColor[opt]?covColor[opt].active:"bg-stone-400 text-white"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
-                            {opt}
-                          </button>
-                        ))}
-                      </div>
+
+                      {isWeekday ? (
+                        <div className="space-y-2.5">
+                          {/* Lily — Kindergarten */}
+                          <div className="bg-rose-50/50 rounded-xl p-2.5 space-y-1.5">
+                            <p className="text-xs font-bold text-rose-700">Lily — Kindergarten</p>
+                            {renderToggle("Drop-off", DROPOFF_OPTIONS, "lily", "dropoff", PERSON_COLOR)}
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-semibold text-stone-500 w-16 flex-shrink-0">After K</span>
+                                {isCalendarOnly ? (
+                                  dl?.lily?.afterCare ? (
+                                    <span className={"text-xs px-2.5 py-0.5 rounded-full font-semibold border "+(AFTER_K_COLOR[dl.lily.afterCare]?.badge||"bg-stone-100 text-stone-600 border-stone-200")}>{dl.lily.afterCare}</span>
+                                  ) : (
+                                    <span className="text-xs text-stone-300 italic">not set</span>
+                                  )
+                                ) : (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {AFTER_K_OPTIONS.map(opt=>(
+                                      <button key={opt} onClick={()=>saveLogistics(day.key,"lily","afterCare",opt)}
+                                        className={"text-xs px-2.5 py-1 rounded-full font-semibold border transition-colors "+(dl?.lily?.afterCare===opt?(AFTER_K_COLOR[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
+                                        {opt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Sub-options: who from "Us" or activity name from "Activity" */}
+                              {dl?.lily?.afterCare==="Us"&&(
+                                <div className="ml-16 mt-1">
+                                  {renderToggle("Who", ["Kelly","Kevin"], "lily", "afterWho", PERSON_COLOR)}
+                                </div>
+                              )}
+                              {dl?.lily?.afterCare==="Activity"&&!isCalendarOnly&&(
+                                <input value={dl?.lily?.activityName||""} onChange={e=>setLogisticsField(day.key,"lily","activityName",e.target.value)} placeholder="Activity name (e.g. Soccer 4pm)"
+                                  className="ml-16 mt-1 w-[calc(100%-4rem)] text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-slate-400"/>
+                              )}
+                              {dl?.lily?.afterCare==="Activity"&&isCalendarOnly&&dl?.lily?.activityName&&(
+                                <p className="ml-16 mt-1 text-xs text-stone-600">{dl.lily.activityName}</p>
+                              )}
+                            </div>
+                          </div>
+                          {/* Carter — Daycare */}
+                          <div className="bg-blue-50/50 rounded-xl p-2.5 space-y-1.5">
+                            <p className="text-xs font-bold text-blue-700">Carter — Daycare</p>
+                            {renderToggle("Drop-off", DROPOFF_OPTIONS.filter(o=>o!=="Nana & Grumpa"), "carter", "dropoff", PERSON_COLOR)}
+                            {renderToggle("Pick-up", PICKUP_OPTIONS.filter(o=>o!=="Nana & Grumpa"), "carter", "pickup", PERSON_COLOR)}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-stone-400 italic">No school — enjoy the weekend</p>
+                      )}
+
                       {events.length>0&&(
-                        <div className="border-t border-stone-100 pt-2 space-y-1">
+                        <div className="border-t border-stone-100 pt-2 mt-2 space-y-1">
                           {events.map(e=>(
                             <div key={e.id} className="flex items-start gap-2 text-xs">
                               <span className={"w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 "+(e.who==="Kelly"?"bg-rose-400":e.who==="Kevin"?"bg-blue-400":"bg-stone-300")}/>
@@ -965,6 +1094,7 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
               </div>
             )}
 
+            {!isCalendarOnly && (<>
             <div>
               <SectionHeader icon={AlertTriangle} title="Action items"/>
               <div className="space-y-2">
@@ -1021,6 +1151,8 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
               className="w-full flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white text-sm font-bold rounded-2xl hover:bg-slate-800 transition-colors">
               Next: Plan <ArrowRight className="w-4 h-4"/>
             </button>
+            </>
+            )}
           </div>
         )}
 
@@ -1501,10 +1633,10 @@ export default function FamilySOUnion({ db, user, onSignOut }) {
                   <p className="text-sm text-stone-200">{thisWeekDecisions.length} decision{thisWeekDecisions.length!==1?"s":""} logged</p>
                   <p className="text-sm text-stone-200">{mealsPlanned} of 7 dinners planned</p>
                   {Object.keys(groceryList).length>0&&<p className="text-sm text-stone-200">Grocery list ready ({groceryAllItems.length} items)</p>}
-                  <p className="text-sm text-stone-200">{coverageSet} of 7 days with kid coverage set</p>
+                  <p className="text-sm text-stone-200">{logisticsSet} of 5 weekdays with drop-off / pick-up set</p>
                   {nextDateNight&&(()=>{ const d=Math.round((nextDateNight.date-new Date())/(1000*60*60*24)); return <p className="text-sm text-stone-200">Next date: {nextDateNight.label} ({d<=0?"today":d===1?"tomorrow":d+"d away"})</p>; })()}
                   {streak.count>0&&<p className="text-sm text-stone-200 flex items-center gap-1.5"><Flame className="w-3.5 h-3.5 text-amber-400"/>{streak.count} week streak{streak.best>streak.count?" · best "+streak.best:""}</p>}
-                  {conflictDays.length>0&&<p className="text-sm text-amber-300">{conflictDays.length} coverage gap{conflictDays.length>1?"s":""} remaining</p>}
+                  {conflictDays.length>0&&<p className="text-sm text-amber-300">{conflictDays.length} weekday{conflictDays.length>1?"s":""} with incomplete assignments remaining</p>}
                 </div>
               </div>
             )}
