@@ -304,7 +304,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
   const [selectedMealDay,setSelectedMealDay] = useState(null);
   const [saveStatus,setSaveStatus]      = useState("idle");
   const [expandedSections,setExpandedSections] = useState({});
-  const [activityForm,setActivityForm]     = useState({}); // { [dateKey]: { text:"", who:null } }
   const [copyStatus,setCopyStatus]      = useState("idle");
   const mealSaveTimer = useRef(null);
 
@@ -533,18 +532,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
     setLogistics(u); await persist("logistics",u);
   };
 
-  // Add a weekend / day activity (e.g. "Swim with Grace" → Kelly)
-  const addActivity = async(dateKey,text,who)=>{
-    if(!text.trim()) return;
-    const dayLog = logistics[dateKey] || {};
-    const activities = dayLog.activities || [];
-    const u = {
-      ...logistics,
-      [dateKey]: { ...dayLog, activities: [...activities, { id:uid(), text:text.trim(), who }] },
-    };
-    setLogistics(u); await persist("logistics",u);
-  };
-
   // Assign a person to a calendar event (e.g. "Swim with Grace" → Kelly).
   // Calendar UIDs contain "." and "@", which are not valid Firestore map keys.
   const saveEventOwner = async(dateKey,eventId,who)=>{
@@ -554,16 +541,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
     const u = {
       ...logistics,
       [dateKey]: { ...dayLog, eventOwners: { ...owners, [key]: owners[key]===who ? null : who } },
-    };
-    setLogistics(u); await persist("logistics",u);
-  };
-
-  const removeActivity = async(dateKey,activityId)=>{
-    const dayLog = logistics[dateKey] || {};
-    const activities = (dayLog.activities || []).filter(a=>a.id!==activityId);
-    const u = {
-      ...logistics,
-      [dateKey]: { ...dayLog, activities },
     };
     setLogistics(u); await persist("logistics",u);
   };
@@ -1100,15 +1077,16 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                           </div>
                         </div>
                       )}
-                      {/* Activities & calendar events, each with a person on point */}
+                      {/* Calendar events — assign who is on point */}
                       {(() => {
-                        const activities = dl?.activities || [];
                         const owners = dl?.eventOwners || {};
-                        const af = activityForm[day.key] || { text:"", who:null };
+                        if(events.length === 0){
+                          return isWeekday ? null : (
+                            <p className="text-xs text-stone-300 italic">Nothing on the calendar</p>
+                          );
+                        }
                         return (
                           <div className={isWeekday ? "mt-2.5 pt-2.5 border-t border-stone-100 space-y-1.5" : "space-y-1.5"}>
-                            <p className="text-xs font-semibold text-stone-500 mb-1">Activities</p>
-                            {/* Calendar events — assign who is on point */}
                             {events.map(e=>{
                               const owner = owners[eventKeyOf(e.id)];
                               return (
@@ -1134,44 +1112,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                                 </div>
                               );
                             })}
-                            {activities.length > 0 && activities.map(a=>(
-                              <div key={a.id} className="flex items-center gap-2 text-xs">
-                                <span className="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0"/>
-                                <span className="text-stone-700 flex-1">{a.text}</span>
-                                {a.who ? (
-                                  <span className={"px-2 py-0.5 rounded-full font-semibold border "+(PERSON_COLOR[a.who]?.badge||"bg-stone-100 text-stone-600 border-stone-200")}>{a.who}</span>
-                                ) : (
-                                  <span className="text-stone-300 italic">unassigned</span>
-                                )}
-                                {!isCalendarOnly && (
-                                  <button onClick={()=>removeActivity(day.key,a.id)} className="text-stone-300 hover:text-rose-500 flex-shrink-0">
-                                    <X className="w-3 h-3"/>
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                            {activities.length === 0 && events.length === 0 && isCalendarOnly && (
-                              <p className="text-xs text-stone-300 italic">No activities</p>
-                            )}
-                            {!isCalendarOnly && (
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <input value={af.text} onChange={e=>setActivityForm(p=>({...p,[day.key]:{...(p[day.key]||{text:"",who:null}),text:e.target.value}}))}
-                                  placeholder="Add activity (e.g. Swim with Grace)"
-                                  onKeyDown={e=>{ if(e.key==="Enter"&&af.text.trim()){ addActivity(day.key,af.text,af.who); setActivityForm(p=>({...p,[day.key]:{text:"",who:null}})); } }}
-                                  className="flex-1 min-w-[120px] text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-slate-400"/>
-                                {ACTIVITY_OWNERS.map(opt=>(
-                                  <button key={opt} onClick={()=>setActivityForm(p=>({...p,[day.key]:{...(p[day.key]||{text:"",who:null}),who:af.who===opt?null:opt}}))}
-                                    className={"text-xs px-2 py-1 rounded-full font-semibold border transition-colors "+(af.who===opt?(PERSON_COLOR[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
-                                    {opt}
-                                  </button>
-                                ))}
-                                <button onClick={()=>{ if(af.text.trim()){ addActivity(day.key,af.text,af.who); setActivityForm(p=>({...p,[day.key]:{text:"",who:null}})); } }}
-                                  disabled={!af.text.trim()}
-                                  className="flex items-center gap-1 px-2.5 py-1 bg-slate-900 text-white text-xs font-bold rounded-lg disabled:opacity-30 transition-colors">
-                                  <Plus className="w-3 h-3"/>Add
-                                </button>
-                              </div>
-                            )}
                           </div>
                         );
                       })()}
