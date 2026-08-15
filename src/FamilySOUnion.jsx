@@ -89,7 +89,9 @@ const PERSON_COLOR = {
   Kelly:            { active: "bg-rose-500 text-white border-rose-500",     badge: "bg-rose-100 text-rose-700 border-rose-200" },
   Kevin:            { active: "bg-blue-500 text-white border-blue-500",     badge: "bg-blue-100 text-blue-700 border-blue-200" },
   "Nana & Grumpa":  { active: "bg-emerald-500 text-white border-emerald-500", badge: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  Together:         { active: "bg-violet-500 text-white border-violet-500",   badge: "bg-violet-100 text-violet-700 border-violet-200" },
 };
+const ACTIVITY_OWNERS = ["Kelly", "Kevin", "Nana & Grumpa", "Together"];
 const AFTER_K_COLOR = {
   Us:               { active: "bg-violet-500 text-white border-violet-500",   badge: "bg-violet-100 text-violet-700 border-violet-200" },
   "Nana & Grumpa":  { active: "bg-emerald-500 text-white border-emerald-500", badge: "bg-emerald-100 text-emerald-700 border-emerald-200" },
@@ -100,6 +102,8 @@ const HOUSE_ICONS = {HVAC:Wind,Roof:Home,Safety:Shield,Plumbing:Droplets,Applian
 const PRIORITY_COLOR = {critical:"text-rose-600",high:"text-amber-600",medium:"text-stone-400",low:"text-stone-300"};
 
 const uid = () => Math.random().toString(36).slice(2,9);
+// Firestore map keys can't contain "." or "/", and calendar UIDs usually do
+const eventKeyOf = (id) => String(id||"").replace(/[^a-zA-Z0-9]/g,"_").slice(0,150);
 const normalizeMeal = (s) => (s||"").trim().toLowerCase();
 const categorizeIngredient = (item) => {
   const s = (item||"").toLowerCase();
@@ -537,6 +541,19 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
     const u = {
       ...logistics,
       [dateKey]: { ...dayLog, activities: [...activities, { id:uid(), text:text.trim(), who }] },
+    };
+    setLogistics(u); await persist("logistics",u);
+  };
+
+  // Assign a person to a calendar event (e.g. "Swim with Grace" → Kelly).
+  // Calendar UIDs contain "." and "@", which are not valid Firestore map keys.
+  const saveEventOwner = async(dateKey,eventId,who)=>{
+    const key = eventKeyOf(eventId);
+    const dayLog = logistics[dateKey] || {};
+    const owners = dayLog.eventOwners || {};
+    const u = {
+      ...logistics,
+      [dateKey]: { ...dayLog, eventOwners: { ...owners, [key]: owners[key]===who ? null : who } },
     };
     setLogistics(u); await persist("logistics",u);
   };
@@ -1083,15 +1100,43 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                           </div>
                         </div>
                       )}
-                      {/* Activities with person assignment (all days incl. weekends) */}
+                      {/* Activities & calendar events, each with a person on point */}
                       {(() => {
                         const activities = dl?.activities || [];
+                        const owners = dl?.eventOwners || {};
                         const af = activityForm[day.key] || { text:"", who:null };
                         return (
                           <div className={isWeekday ? "mt-2.5 pt-2.5 border-t border-stone-100 space-y-1.5" : "space-y-1.5"}>
-                            {!isWeekday && <p className="text-xs font-semibold text-stone-500 mb-1">Activities</p>}
+                            <p className="text-xs font-semibold text-stone-500 mb-1">Activities</p>
+                            {/* Calendar events — assign who is on point */}
+                            {events.map(e=>{
+                              const owner = owners[eventKeyOf(e.id)];
+                              return (
+                                <div key={e.id} className="flex items-center gap-2 flex-wrap text-xs">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0"/>
+                                  <span className="text-stone-700 flex-1 min-w-[100px]">{e.title}{e.time&&e.time!=="All day"?" - "+e.time:""}</span>
+                                  {isCalendarOnly ? (
+                                    owner ? (
+                                      <span className={"px-2 py-0.5 rounded-full font-semibold border "+(PERSON_COLOR[owner]?.badge||"bg-stone-100 text-stone-600 border-stone-200")}>{owner}</span>
+                                    ) : (
+                                      <span className="text-stone-300 italic">unassigned</span>
+                                    )
+                                  ) : (
+                                    <div className="flex flex-wrap gap-1">
+                                      {ACTIVITY_OWNERS.map(opt=>(
+                                        <button key={opt} onClick={()=>saveEventOwner(day.key,e.id,opt)}
+                                          className={"px-2 py-0.5 rounded-full font-semibold border transition-colors "+(owner===opt?(PERSON_COLOR[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
+                                          {opt}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                             {activities.length > 0 && activities.map(a=>(
                               <div key={a.id} className="flex items-center gap-2 text-xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0"/>
                                 <span className="text-stone-700 flex-1">{a.text}</span>
                                 {a.who ? (
                                   <span className={"px-2 py-0.5 rounded-full font-semibold border "+(PERSON_COLOR[a.who]?.badge||"bg-stone-100 text-stone-600 border-stone-200")}>{a.who}</span>
@@ -1105,7 +1150,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                                 )}
                               </div>
                             ))}
-                            {activities.length === 0 && isCalendarOnly && (
+                            {activities.length === 0 && events.length === 0 && isCalendarOnly && (
                               <p className="text-xs text-stone-300 italic">No activities</p>
                             )}
                             {!isCalendarOnly && (
@@ -1114,7 +1159,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                                   placeholder="Add activity (e.g. Swim with Grace)"
                                   onKeyDown={e=>{ if(e.key==="Enter"&&af.text.trim()){ addActivity(day.key,af.text,af.who); setActivityForm(p=>({...p,[day.key]:{text:"",who:null}})); } }}
                                   className="flex-1 min-w-[120px] text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-slate-400"/>
-                                {["Kelly","Kevin","Nana & Grumpa","Together"].map(opt=>(
+                                {ACTIVITY_OWNERS.map(opt=>(
                                   <button key={opt} onClick={()=>setActivityForm(p=>({...p,[day.key]:{...(p[day.key]||{text:"",who:null}),who:af.who===opt?null:opt}}))}
                                     className={"text-xs px-2 py-1 rounded-full font-semibold border transition-colors "+(af.who===opt?(PERSON_COLOR[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
                                     {opt}
@@ -1130,18 +1175,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                           </div>
                         );
                       })()}
-
-                      {events.length>0&&(
-                        <div className="border-t border-stone-100 pt-2 mt-2 space-y-1">
-                          {events.map(e=>(
-                            <div key={e.id} className="flex items-start gap-2 text-xs">
-                              <span className={"w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 "+(e.who==="Kelly"?"bg-rose-400":e.who==="Kevin"?"bg-blue-400":"bg-stone-300")}/>
-                              <span className="text-stone-600 flex-1">{e.title}{e.time?" - "+e.time:""}</span>
-                              {e.who!=="family"&&<span className={"font-bold flex-shrink-0 "+(e.who==="Kelly"?"text-rose-600":"text-blue-600")}>{e.who}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
