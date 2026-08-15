@@ -79,7 +79,7 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 // Lily is in kindergarten (M-Th 8:30–3:30, Fri 9:15–3:30).
 // Carter is in daycare.
 // Each weekday, both parents (and Nana & Grumpa) coordinate who handles each leg.
-const K_SCHEDULE = { 1:"8:30–3:30", 2:"8:30–3:30", 3:"8:30–3:30", 4:"8:30–3:30", 5:"9:15–3:30" };
+const K_SCHEDULE = { 1:"8:30–3:27", 2:"8:30–3:27", 3:"8:30–3:27", 4:"8:30–3:27", 5:"9:15–3:27" };
 const DROPOFF_OPTIONS = ["Kelly", "Kevin", "Nana & Grumpa"];
 const PICKUP_OPTIONS  = ["Kelly", "Kevin", "Nana & Grumpa"];
 const AFTER_K_OPTIONS = ["Us", "Nana & Grumpa", "BASE", "Activity"];
@@ -298,6 +298,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
   const [selectedMealDay,setSelectedMealDay] = useState(null);
   const [saveStatus,setSaveStatus]      = useState("idle");
   const [expandedSections,setExpandedSections] = useState({});
+  const [activityForm,setActivityForm]     = useState({}); // { [dateKey]: { text:"", who:null } }
   const [copyStatus,setCopyStatus]      = useState("idle");
   const mealSaveTimer = useRef(null);
 
@@ -326,6 +327,8 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
 
   // ── FIRESTORE LISTENERS ───────────────────────────────────────────────────
   useEffect(()=>{
+    // If Firestore doesn't respond within 15s, stop hanging so the user sees something
+    const timeout = setTimeout(()=>setSyncStatus("synced"), 15000);
     // Current week
     const currRef = doc(db,"sou",weekId);
     const unsubCurr = onSnapshot(currRef,(snap)=>{
@@ -347,23 +350,26 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
         setGroceryChecked(d.groceryChecked||{});
       }
       setSyncStatus("synced");
+    },(err)=>{
+      console.error("Firestore error (current week):",err);
+      setSyncStatus("synced");
     });
     // Last week (for Debrief)
     const lastRef = doc(db,"sou",lastWeekId);
     const unsubLast = onSnapshot(lastRef,(snap)=>{
       if(snap.exists()) setLastWeekDecisions(snap.data().decisions||[]);
       else setLastWeekDecisions([]);
-    });
+    },(err)=>console.error("Firestore error (last week):",err));
     // House maintenance
     const houseRef = doc(db,"house",monthKey);
     const unsubHouse = onSnapshot(houseRef,(snap)=>{
       if(snap.exists()) setHouseDone(snap.data().done||{});
-    });
+    },(err)=>console.error("Firestore error (house):",err));
     // Streak (single shared doc)
     const streakRef = doc(db,"meta","streak");
     const unsubStreak = onSnapshot(streakRef,(snap)=>{
       if(snap.exists()) setStreak(s=>({...s,...snap.data()}));
-    });
+    },(err)=>console.error("Firestore error (streak):",err));
     // Recipe library + ratings (shared)
     const recipesRef = doc(db,"meta","recipes");
     const unsubRecipes = onSnapshot(recipesRef,(snap)=>{
@@ -372,8 +378,8 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
     const ratingsRef = doc(db,"meta","ratings");
     const unsubRatings = onSnapshot(ratingsRef,(snap)=>{
       if(snap.exists()) setMealRatings(snap.data().ratings||{});
-    });
-    return ()=>{ unsubCurr(); unsubLast(); unsubHouse(); unsubStreak(); unsubRecipes(); unsubRatings(); };
+    },(err)=>console.error("Firestore error (ratings):",err));
+    return ()=>{ clearTimeout(timeout); unsubCurr(); unsubLast(); unsubHouse(); unsubStreak(); unsubRecipes(); unsubRatings(); };
   },[db,weekId,lastWeekId,monthKey]);
 
   // Sync mealEdits with meals from Firestore
@@ -512,6 +518,28 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
         ...dayLog,
         [child]: { ...childLog, [field]: val },
       },
+    };
+    setLogistics(u); await persist("logistics",u);
+  };
+
+  // Add a weekend / day activity (e.g. "Swim with Grace" → Kelly)
+  const addActivity = async(dateKey,text,who)=>{
+    if(!text.trim()) return;
+    const dayLog = logistics[dateKey] || {};
+    const activities = dayLog.activities || [];
+    const u = {
+      ...logistics,
+      [dateKey]: { ...dayLog, activities: [...activities, { id:uid(), text:text.trim(), who }] },
+    };
+    setLogistics(u); await persist("logistics",u);
+  };
+
+  const removeActivity = async(dateKey,activityId)=>{
+    const dayLog = logistics[dateKey] || {};
+    const activities = (dayLog.activities || []).filter(a=>a.id!==activityId);
+    const u = {
+      ...logistics,
+      [dateKey]: { ...dayLog, activities },
     };
     setLogistics(u); await persist("logistics",u);
   };
@@ -999,7 +1027,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                         {isConflict&&<span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">incomplete</span>}
                       </div>
 
-                      {isWeekday ? (
+                      {isWeekday && (
                         <div className="space-y-2.5">
                           {/* Lily — Kindergarten */}
                           <div className="bg-rose-50/50 rounded-xl p-2.5 space-y-1.5">
@@ -1047,9 +1075,54 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                             {renderToggle("Pick-up", PICKUP_OPTIONS.filter(o=>o!=="Nana & Grumpa"), "carter", "pickup", PERSON_COLOR)}
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-xs text-stone-400 italic">No school — enjoy the weekend</p>
                       )}
+                      {/* Activities with person assignment (all days incl. weekends) */}
+                      {(() => {
+                        const activities = dl?.activities || [];
+                        const af = activityForm[day.key] || { text:"", who:null };
+                        return (
+                          <div className={isWeekday ? "mt-2.5 pt-2.5 border-t border-stone-100 space-y-1.5" : "space-y-1.5"}>
+                            {!isWeekday && <p className="text-xs font-semibold text-stone-500 mb-1">Activities</p>}
+                            {activities.length > 0 && activities.map(a=>(
+                              <div key={a.id} className="flex items-center gap-2 text-xs">
+                                <span className="text-stone-700 flex-1">{a.text}</span>
+                                {a.who ? (
+                                  <span className={"px-2 py-0.5 rounded-full font-semibold border "+(PERSON_COLOR[a.who]?.badge||"bg-stone-100 text-stone-600 border-stone-200")}>{a.who}</span>
+                                ) : (
+                                  <span className="text-stone-300 italic">unassigned</span>
+                                )}
+                                {!isCalendarOnly && (
+                                  <button onClick={()=>removeActivity(day.key,a.id)} className="text-stone-300 hover:text-rose-500 flex-shrink-0">
+                                    <X className="w-3 h-3"/>
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            {activities.length === 0 && isCalendarOnly && (
+                              <p className="text-xs text-stone-300 italic">No activities</p>
+                            )}
+                            {!isCalendarOnly && (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <input value={af.text} onChange={e=>setActivityForm(p=>({...p,[day.key]:{...(p[day.key]||{text:"",who:null}),text:e.target.value}}))}
+                                  placeholder="Add activity (e.g. Swim with Grace)"
+                                  onKeyDown={e=>{ if(e.key==="Enter"&&af.text.trim()){ addActivity(day.key,af.text,af.who); setActivityForm(p=>({...p,[day.key]:{text:"",who:null}})); } }}
+                                  className="flex-1 min-w-[120px] text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-slate-400"/>
+                                {["Kelly","Kevin","Nana & Grumpa","Together"].map(opt=>(
+                                  <button key={opt} onClick={()=>setActivityForm(p=>({...p,[day.key]:{...(p[day.key]||{text:"",who:null}),who:af.who===opt?null:opt}}))}
+                                    className={"text-xs px-2 py-1 rounded-full font-semibold border transition-colors "+(af.who===opt?(PERSON_COLOR[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
+                                    {opt}
+                                  </button>
+                                ))}
+                                <button onClick={()=>{ if(af.text.trim()){ addActivity(day.key,af.text,af.who); setActivityForm(p=>({...p,[day.key]:{text:"",who:null}})); } }}
+                                  disabled={!af.text.trim()}
+                                  className="flex items-center gap-1 px-2.5 py-1 bg-slate-900 text-white text-xs font-bold rounded-lg disabled:opacity-30 transition-colors">
+                                  <Plus className="w-3 h-3"/>Add
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {events.length>0&&(
                         <div className="border-t border-stone-100 pt-2 mt-2 space-y-1">
