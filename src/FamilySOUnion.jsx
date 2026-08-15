@@ -1071,6 +1071,33 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                 })}
               </div>
             </div>
+            {/* Upcoming events (beyond planning week) */}
+            {upcomingEvents.length>0&&(
+              <div>
+                <button onClick={()=>setExpandedSections(p=>({...p,upcoming:!p.upcoming}))}
+                  className="w-full flex items-center gap-2 mb-2 text-left">
+                  <Calendar className="w-4 h-4 text-stone-400 flex-shrink-0"/>
+                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-widest flex-1">Coming up (30 days)</h2>
+                  <span className="text-xs text-stone-400">{upcomingEvents.length} events</span>
+                  {expandedSections.upcoming?<ChevronDown className="w-4 h-4 text-stone-400"/>:<ChevronRight className="w-4 h-4 text-stone-400"/>}
+                </button>
+                {expandedSections.upcoming&&(
+                  <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm mb-4">
+                    {upcomingEvents.map((e,i)=>(
+                      <div key={e.id} className={"flex items-start gap-3 px-4 py-3 "+(i<upcomingEvents.length-1?"border-b border-stone-100":"")}>
+                        <span className={"w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 "+(e.who==="Kelly"?"bg-rose-400":e.who==="Kevin"?"bg-blue-400":"bg-stone-300")}/>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{e.title}</p>
+                          <p className="text-xs text-stone-400">{new Date(e.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}{e.time&&e.time!=="All day"?" · "+e.time:""}</p>
+                        </div>
+                        {e.who!=="family"&&<span className={"text-xs font-semibold "+(e.who==="Kelly"?"text-rose-600":"text-blue-600")}>{e.who}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Add an event to the family calendar — parents only */}
             {!isCalendarOnly&&(
             <div>
@@ -1119,32 +1146,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                 </div>
               )}
             </div>
-            )}
-            {/* Upcoming events (beyond planning week) */}
-            {upcomingEvents.length>0&&(
-              <div>
-                <button onClick={()=>setExpandedSections(p=>({...p,upcoming:!p.upcoming}))}
-                  className="w-full flex items-center gap-2 mb-2 text-left">
-                  <Calendar className="w-4 h-4 text-stone-400 flex-shrink-0"/>
-                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-widest flex-1">Coming up (30 days)</h2>
-                  <span className="text-xs text-stone-400">{upcomingEvents.length} events</span>
-                  {expandedSections.upcoming?<ChevronDown className="w-4 h-4 text-stone-400"/>:<ChevronRight className="w-4 h-4 text-stone-400"/>}
-                </button>
-                {expandedSections.upcoming&&(
-                  <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm mb-4">
-                    {upcomingEvents.map((e,i)=>(
-                      <div key={e.id} className={"flex items-start gap-3 px-4 py-3 "+(i<upcomingEvents.length-1?"border-b border-stone-100":"")}>
-                        <span className={"w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 "+(e.who==="Kelly"?"bg-rose-400":e.who==="Kevin"?"bg-blue-400":"bg-stone-300")}/>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{e.title}</p>
-                          <p className="text-xs text-stone-400">{new Date(e.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}{e.time&&e.time!=="All day"?" · "+e.time:""}</p>
-                        </div>
-                        {e.who!=="family"&&<span className={"text-xs font-semibold "+(e.who==="Kelly"?"text-rose-600":"text-blue-600")}>{e.who}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             )}
 
             {!isCalendarOnly && (
