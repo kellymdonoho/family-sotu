@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "./firebase";
 import {
   Calendar, Heart, AlertTriangle, Home, Wrench, Leaf, Save, Utensils,
   Check, ExternalLink, X, ChefHat, RotateCcw, ChevronDown, ChevronRight,
@@ -467,8 +469,9 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
     const updated = { count, best:Math.max(streak.best||0,count), lastCompletedWeek:weekId };
     setStreak(updated);
     setDoc(doc(db,"meta","streak"),updated,{merge:true}).catch(e=>console.error(e));
-    // Signal the Cloud Function to send pick-up reminders
-    setDoc(doc(db,"sou",weekId),{meetingCompletedAt:new Date().toISOString()},{merge:true}).catch(e=>console.error(e));
+    // Send Lily pick-up reminders via callable Cloud Function
+    const sendPickupReminders = httpsCallable(functions, "sendPickupReminders");
+    sendPickupReminders({ weekId }).catch(e=>console.error("Pick-up reminder error:",e));
   },[allTabsVisited,streak,weekId,db,isCalendarOnly]);
 
   // ── HANDLERS ──────────────────────────────────────────────────────────────

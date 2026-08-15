@@ -1,5 +1,5 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onCall } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -73,23 +73,37 @@ exports.sundayMeetingReminder = onSchedule(
 );
 
 // ── LILY PICK-UP REMINDER ───────────────────────────────────────────────────
-// Fires when a parent completes the Sunday meeting (meetingCompletedAt is
-// newly written to sou/{weekId}). Reads the week's logistics data, figures
-// out who picks up Lily each weekday, and sends each person a reminder with
-// their specific days.
-exports.lilyPickupReminder = onDocumentUpdated("sou/{weekId}", async (event) => {
-  const before = event.data.before.data();
-  const after = event.data.after.data();
+// Callable function — the app calls this when parents complete the Sunday
+// meeting. Reads the week's logistics from Firestore, figures out who picks
+// up Lily each weekday, and sends each person a reminder with their days.
+exports.sendPickupReminders = onCall(async (request) => {
+  // Only authenticated users can trigger this
+  if (!request.auth) {
+    throw new Error("UNAUTHENTICATED: You must be signed in.");
+  }
 
-  // Only fire when meetingCompletedAt transitions from unset → set
-  if (before?.meetingCompletedAt || !after?.meetingCompletedAt) return;
-  // Don't send twice for the same week
-  if (after.pickupRemindersSent) return;
+  const weekId = request.data?.weekId;
+  if (!weekId) {
+    throw new Error("INVALID_ARGUMENT: weekId is required.");
+  }
 
-  const logistics = after.logistics;
+  const db = getFirestore();
+
+  // Read the week's logistics data from Firestore
+  const weekDoc = await db.collection("sou").doc(weekId).get();
+  if (!weekDoc.exists) {
+    return { ok: false, message: "No data found for this week." };
+  }
+
+  const weekData = weekDoc.data();
+  const logistics = weekData.logistics;
   if (!logistics) {
-    console.log("No logistics data for week", event.params.weekId);
-    return;
+    return { ok: false, message: "No logistics data for this week." };
+  }
+
+  // Don't send twice for the same week
+  if (weekData.pickupRemindersSent) {
+    return { ok: false, message: "Reminders already sent for this week." };
   }
 
   // Build a map: person name → list of day names they pick up Lily
@@ -115,13 +129,11 @@ exports.lilyPickupReminder = onDocumentUpdated("sou/{weekId}", async (event) => 
 
   const people = Object.keys(pickupDays).filter((p) => EMAIL_BY_NAME[p]);
   if (!people.length) {
-    console.log("No pick-up assignments found for week", event.params.weekId);
-    return;
+    return { ok: false, message: "No pick-up assignments found." };
   }
 
-  const db = getFirestore();
   const messaging = getMessaging();
-  let sentAny = false;
+  const results = [];
 
   for (const person of people) {
     const email = EMAIL_BY_NAME[person];
@@ -130,17 +142,19 @@ exports.lilyPickupReminder = onDocumentUpdated("sou/{weekId}", async (event) => 
     // Look up this person's FCM token by email
     const tokenSnap = await db.collection("fcm_tokens").where("email", "==", email).limit(1).get();
     if (tokenSnap.empty) {
-      console.log(`No FCM token for ${person} (${email})`);
+      results.push({ person, status: "no_token" });
       continue;
     }
 
     const token = tokenSnap.docs[0].data().token;
-    if (!token) continue;
+    if (!token) {
+      results.push({ person, status: "no_token" });
+      continue;
+    }
 
     // Build the message body
     let dayList;
     if (days.length === 1) {
-      // Find the date key for this person's single pick-up day
       const dateKey = Object.keys(logistics).find((k) => {
         const dl = logistics[k];
         if (person === "Nana & Grumpa") return dl?.lily?.afterCare === "Nana & Grumpa";
@@ -172,18 +186,17 @@ exports.lilyPickupReminder = onDocumentUpdated("sou/{weekId}", async (event) => 
 
     try {
       const resp = await messaging.send(message);
-      console.log(`Pick-up reminder sent to ${person}:`, resp);
-      sentAny = true;
+      results.push({ person, status: "sent", messageId: resp });
     } catch (e) {
-      console.error(`Failed to send pick-up reminder to ${person}:`, e);
+      results.push({ person, status: "error", error: e.message });
     }
   }
 
-  // Mark reminders as sent so we don't re-send if the document updates again
-  if (sentAny) {
-    await db.collection("sou").doc(event.params.weekId).set(
-      { pickupRemindersSent: true },
-      { merge: true }
-    );
-  }
+  // Mark reminders as sent so we don't re-send if called again
+  await db.collection("sou").doc(weekId).set(
+    { pickupRemindersSent: true },
+    { merge: true }
+  );
+
+  return { ok: true, results };
 });
