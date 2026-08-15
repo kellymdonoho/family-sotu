@@ -12,6 +12,7 @@ const APP_URL = "https://family-sotu.vercel.app";
 const EMAIL_BY_NAME = {
   Kelly: "kellymdonoho@gmail.com",
   Kevin: "kdonoho1@gmail.com",
+  "Nana & Grumpa": "donna_durham@yahoo.com",
 };
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -99,17 +100,22 @@ exports.lilyPickupReminder = onDocumentUpdated("sou/{weekId}", async (event) => 
     const dow = new Date(dateKey + "T12:00:00Z").getUTCDay();
     if (dow < 1 || dow > 5) return; // weekdays only (Mon-Fri)
 
-    // "Us" means a parent picks up; afterWho says which one
+    // Determine who picks up Lily:
+    //   afterCare="Us" + afterWho=Kelly/Kevin → that parent picks up
+    //   afterCare="Nana & Grumpa" → Nana & Grumpa pick up
     if (dayLog.lily.afterCare === "Us" && dayLog.lily.afterWho) {
       const person = dayLog.lily.afterWho;
       if (!pickupDays[person]) pickupDays[person] = [];
       pickupDays[person].push(DAY_NAMES[dow]);
+    } else if (dayLog.lily.afterCare === "Nana & Grumpa") {
+      if (!pickupDays["Nana & Grumpa"]) pickupDays["Nana & Grumpa"] = [];
+      pickupDays["Nana & Grumpa"].push(DAY_NAMES[dow]);
     }
   });
 
   const people = Object.keys(pickupDays).filter((p) => EMAIL_BY_NAME[p]);
   if (!people.length) {
-    console.log("No parent pick-up assignments found for week", event.params.weekId);
+    console.log("No pick-up assignments found for week", event.params.weekId);
     return;
   }
 
@@ -134,12 +140,13 @@ exports.lilyPickupReminder = onDocumentUpdated("sou/{weekId}", async (event) => 
     // Build the message body
     let dayList;
     if (days.length === 1) {
-      const dow = new Date(
-        Object.keys(logistics).find((k) => {
-          const dl = logistics[k];
-          return dl?.lily?.afterCare === "Us" && dl?.lily?.afterWho === person;
-        }) + "T12:00:00Z"
-      ).getUTCDay();
+      // Find the date key for this person's single pick-up day
+      const dateKey = Object.keys(logistics).find((k) => {
+        const dl = logistics[k];
+        if (person === "Nana & Grumpa") return dl?.lily?.afterCare === "Nana & Grumpa";
+        return dl?.lily?.afterCare === "Us" && dl?.lily?.afterWho === person;
+      });
+      const dow = new Date(dateKey + "T12:00:00Z").getUTCDay();
       dayList = WEEKDAY_FULL[dow];
     } else {
       dayList = days.join(", ");

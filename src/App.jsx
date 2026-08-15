@@ -213,10 +213,14 @@ export default function App() {
 
   return (
     <div>
-      {userRole === "parent" && notifStatus === "prompt" && VAPID_KEY && (
+      {notifStatus === "prompt" && VAPID_KEY && (
         <div className="bg-slate-900 text-white px-4 py-3 flex items-center gap-3">
           <Bell className="w-4 h-4 text-amber-400 flex-shrink-0"/>
-          <p className="text-sm flex-1">Get a reminder before Sunday meetings</p>
+          <p className="text-sm flex-1">
+            {userRole === "parent"
+              ? "Get a reminder before Sunday meetings"
+              : "Get pick-up reminders for Lily"}
+          </p>
           <button onClick={enableNotifications}
             className="text-xs font-bold bg-white text-slate-900 px-3 py-1.5 rounded-lg hover:bg-stone-100 transition-colors flex-shrink-0">
             Enable
@@ -226,7 +230,7 @@ export default function App() {
           </button>
         </div>
       )}
-      {userRole === "parent" && notifStatus === "denied" && (
+      {notifStatus === "denied" && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-700 text-center">
           Notifications blocked. Settings → Safari → [this site] → Notifications → Allow
         </div>
