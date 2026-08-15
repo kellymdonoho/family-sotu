@@ -4,7 +4,7 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "./firebase";
 import {
   Calendar, Heart, AlertTriangle, Home, Wrench, Leaf, Save, Utensils,
-  Check, ExternalLink, X, ChefHat, RotateCcw, ChevronDown, ChevronRight,
+  Check, ExternalLink, X, ChefHat, RotateCcw, ChevronDown, ChevronLeft, ChevronRight,
   Plus, Star, CheckCircle, Trophy, MessageSquare, Users, Edit,
   Wind, Armchair, Thermometer, Droplets, Shield, Snowflake, Flame, Sparkles,
   Bug, ThumbsUp, ThumbsDown, ClipboardCheck, ArrowRight, ShoppingCart, Copy, LogOut
@@ -86,6 +86,7 @@ const DAYCARE_HOURS = "6:30 AM–6:00 PM";
 const DROPOFF_OPTIONS = ["Kelly", "Kevin", "Nana & Grumpa"];
 const PICKUP_OPTIONS  = ["Kelly", "Kevin", "Nana & Grumpa"];
 const AFTER_K_OPTIONS = ["Us", "Nana & Grumpa", "BASE", "Activity"];
+const AFTER_K_LABEL = {"Nana & Grumpa":"Nana & G"};
 const PERSON_COLOR = {
   Kelly:            { active: "bg-rose-500 text-white border-rose-500",     badge: "bg-rose-100 text-rose-700 border-rose-200" },
   Kevin:            { active: "bg-blue-500 text-white border-blue-500",     badge: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -206,17 +207,19 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
   const today = useMemo(()=>new Date(),[]);
   const monthIdx = today.getMonth();
   const monthKey = monthIdx+"-"+today.getFullYear();
+  const [weekOffset,setWeekOffset] = useState(0);
 
   const planningWeek = useMemo(()=>{
     const isSun=today.getDay()===0;
     const ref=new Date(today);
     if(isSun) ref.setDate(today.getDate()+1);
+    ref.setDate(ref.getDate()+(weekOffset*7));
     const monday=getMonday(ref);
     return Array.from({length:7},(_,i)=>{
       const d=new Date(monday); d.setDate(monday.getDate()+i);
       return {key:fmtDateKey(d),label:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][i],dateStr:d.toLocaleDateString("en-US",{month:"short",day:"numeric"})};
     });
-  },[today]);
+  },[today,weekOffset]);
 
   const weekId     = planningWeek[0].key;
   const lastWeekId = subtractDays(weekId,7);
@@ -897,6 +900,20 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                 {logisticsSet}/5 weekdays set
               </span>
             </div>
+            <div className="flex items-center justify-between bg-white border border-stone-200 rounded-2xl p-2 shadow-sm">
+              <button onClick={()=>setWeekOffset(v=>v-1)}
+                className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-stone-500 rounded-xl hover:bg-stone-50 hover:text-slate-900">
+                <ChevronLeft className="w-4 h-4"/> Previous
+              </button>
+              <button onClick={()=>setWeekOffset(0)}
+                className={"px-3 py-2 text-xs font-bold rounded-xl "+(weekOffset===0?"bg-slate-900 text-white":"text-stone-500 hover:bg-stone-50")}>
+                {weekOffset===0?"This week":"Today"}
+              </button>
+              <button onClick={()=>setWeekOffset(v=>v+1)}
+                className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-stone-500 rounded-xl hover:bg-stone-50 hover:text-slate-900">
+                Next <ChevronRight className="w-4 h-4"/>
+              </button>
+            </div>
             {conflictDays.length>0&&(
               <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4">
                 <div className="flex items-center gap-2.5 mb-2">
@@ -916,55 +933,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                 </div>
               </div>
             )}
-            {/* Add an event to the family calendar — parents only */}
-            {!isCalendarOnly&&(
-            <div>
-              <button onClick={()=>setShowAddEvent(v=>!v)}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-stone-200 text-slate-700 text-sm font-semibold rounded-2xl hover:bg-stone-50 transition-colors shadow-sm">
-                {showAddEvent?<X className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}
-                {showAddEvent?"Cancel":"Add to family calendar"}
-              </button>
-              {showAddEvent&&(
-                <div className="mt-2 bg-white border border-stone-200 rounded-2xl p-4 shadow-sm space-y-3">
-                  <input value={eventForm.title} onChange={e=>setEventForm(f=>({...f,title:e.target.value}))}
-                    placeholder="Event title" className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
-                  <div className="flex gap-2">
-                    <input type="date" value={eventForm.date} onChange={e=>setEventForm(f=>({...f,date:e.target.value}))}
-                      className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
-                    <label className="flex items-center gap-1.5 text-xs text-stone-500 px-2 whitespace-nowrap">
-                      <input type="checkbox" checked={eventForm.allDay} onChange={e=>setEventForm(f=>({...f,allDay:e.target.checked}))}/>
-                      All day
-                    </label>
-                  </div>
-                  {!eventForm.allDay&&(
-                    <div className="flex items-center gap-2">
-                      <input type="time" value={eventForm.startTime} onChange={e=>setEventForm(f=>({...f,startTime:e.target.value}))}
-                        className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
-                      <span className="text-xs text-stone-400">to</span>
-                      <input type="time" value={eventForm.endTime} onChange={e=>setEventForm(f=>({...f,endTime:e.target.value}))}
-                        className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
-                    </div>
-                  )}
-                  <div className="flex gap-1.5">
-                    {["family","Kelly","Kevin"].map(opt=>(
-                      <button key={opt} onClick={()=>setEventForm(f=>({...f,who:opt}))}
-                        className={"flex-1 text-xs font-semibold py-1.5 rounded-full border transition-colors "+(eventForm.who===opt?"bg-slate-900 text-white border-slate-900":"border-stone-200 text-stone-400 hover:border-stone-400")}>
-                        {opt==="family"?"Family":opt}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea value={eventForm.notes} onChange={e=>setEventForm(f=>({...f,notes:e.target.value}))}
-                    placeholder="Notes (optional)" rows={2}
-                    className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400 resize-none"/>
-                  {eventError&&<p className="text-xs text-rose-600">{eventError}</p>}
-                  <button onClick={submitEvent} disabled={eventSaving||!eventForm.title.trim()||!eventForm.date}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 disabled:opacity-40 transition-colors">
-                    {eventSaving?"Adding...":<><Plus className="w-4 h-4"/>Add to calendar</>}
-                  </button>
-                </div>
-              )}
-            </div>
-            )}
             {/* LOGISTICS GRID — two-kid drop-off / pick-up coordination */}
             <div>
               <SectionHeader icon={Users} title={isCalendarOnly ? "Drop-off & pick-up schedule" : "Drop-offs & pick-ups"} count={isCalendarOnly ? undefined : logisticsSet+" of 5 weekdays set"}/>
@@ -981,7 +949,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                   const renderToggle = (label, options, child, field, colorMap) => {
                     const current = dl?.[child]?.[field];
                     return (
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-nowrap">
                         <span className="text-xs font-semibold text-stone-500 w-16 flex-shrink-0">{label}</span>
                         {isCalendarOnly ? (
                           current ? (
@@ -990,10 +958,10 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                             <span className="text-xs text-stone-300 italic">not set</span>
                           )
                         ) : (
-                          <div className="flex flex-wrap gap-1.5">
+                          <div className="flex flex-nowrap gap-1 overflow-x-auto">
                             {options.map(opt=>(
                               <button key={opt} onClick={()=>saveLogistics(day.key,child,field,opt)}
-                                className={"text-xs px-2.5 py-1 rounded-full font-semibold border transition-colors "+(current===opt?(colorMap[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
+                                className={"text-[11px] px-2 py-1 rounded-full font-semibold border transition-colors whitespace-nowrap flex-shrink-0 "+(current===opt?(colorMap[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
                                 {opt}
                               </button>
                             ))}
@@ -1008,7 +976,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                       <div className="flex items-center gap-2 mb-2.5 flex-wrap">
                         <span className="text-sm font-bold text-slate-900 w-8">{day.label}</span>
                         <span className="text-xs text-stone-400">{day.dateStr}</span>
-                        {isWeekday && kTime && <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">K: {kTime}</span>}
                         {isConflict&&<span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">incomplete</span>}
                       </div>
 
@@ -1016,7 +983,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                         <div className="space-y-2.5">
                           {/* Lily — Kindergarten */}
                           <div className="bg-rose-50/50 rounded-xl p-2.5 space-y-1.5">
-                            <p className="text-xs font-bold text-rose-700">Lily — Kindergarten</p>
+                            <p className="text-xs font-bold text-rose-700">Lily — Kindergarten <span className="font-medium text-stone-400">{kTime}</span></p>
                             {renderToggle("Drop-off", DROPOFF_OPTIONS, "lily", "dropoff", PERSON_COLOR)}
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
@@ -1028,11 +995,11 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                                     <span className="text-xs text-stone-300 italic">not set</span>
                                   )
                                 ) : (
-                                  <div className="flex flex-wrap gap-1.5">
+                                <div className="flex flex-nowrap gap-1 overflow-x-auto">
                                     {AFTER_K_OPTIONS.map(opt=>(
                                       <button key={opt} onClick={()=>saveLogistics(day.key,"lily","afterCare",opt)}
-                                        className={"text-xs px-2.5 py-1 rounded-full font-semibold border transition-colors "+(dl?.lily?.afterCare===opt?(AFTER_K_COLOR[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
-                                        {opt}
+                                      className={"text-[11px] px-2 py-1 rounded-full font-semibold border transition-colors whitespace-nowrap flex-shrink-0 "+(dl?.lily?.afterCare===opt?(AFTER_K_COLOR[opt]?.active||"bg-stone-400 text-white border-stone-400"):"border-stone-200 text-stone-400 hover:border-stone-400 bg-white")}>
+                                      {AFTER_K_LABEL[opt]||opt}
                                       </button>
                                     ))}
                                   </div>
@@ -1104,6 +1071,55 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                 })}
               </div>
             </div>
+            {/* Add an event to the family calendar — parents only */}
+            {!isCalendarOnly&&(
+            <div>
+              <button onClick={()=>setShowAddEvent(v=>!v)}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-stone-200 text-slate-700 text-sm font-semibold rounded-2xl hover:bg-stone-50 transition-colors shadow-sm">
+                {showAddEvent?<X className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}
+                {showAddEvent?"Cancel":"Add to family calendar"}
+              </button>
+              {showAddEvent&&(
+                <div className="mt-2 bg-white border border-stone-200 rounded-2xl p-4 shadow-sm space-y-3">
+                  <input value={eventForm.title} onChange={e=>setEventForm(f=>({...f,title:e.target.value}))}
+                    placeholder="Event title" className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                  <div className="flex gap-2">
+                    <input type="date" value={eventForm.date} onChange={e=>setEventForm(f=>({...f,date:e.target.value}))}
+                      className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                    <label className="flex items-center gap-1.5 text-xs text-stone-500 px-2 whitespace-nowrap">
+                      <input type="checkbox" checked={eventForm.allDay} onChange={e=>setEventForm(f=>({...f,allDay:e.target.checked}))}/>
+                      All day
+                    </label>
+                  </div>
+                  {!eventForm.allDay&&(
+                    <div className="flex items-center gap-2">
+                      <input type="time" value={eventForm.startTime} onChange={e=>setEventForm(f=>({...f,startTime:e.target.value}))}
+                        className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                      <span className="text-xs text-stone-400">to</span>
+                      <input type="time" value={eventForm.endTime} onChange={e=>setEventForm(f=>({...f,endTime:e.target.value}))}
+                        className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400"/>
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    {["family","Kelly","Kevin"].map(opt=>(
+                      <button key={opt} onClick={()=>setEventForm(f=>({...f,who:opt}))}
+                        className={"flex-1 text-xs font-semibold py-1.5 rounded-full border transition-colors "+(eventForm.who===opt?"bg-slate-900 text-white border-slate-900":"border-stone-200 text-stone-400 hover:border-stone-400")}>
+                        {opt==="family"?"Family":opt}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea value={eventForm.notes} onChange={e=>setEventForm(f=>({...f,notes:e.target.value}))}
+                    placeholder="Notes (optional)" rows={2}
+                    className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:border-slate-400 resize-none"/>
+                  {eventError&&<p className="text-xs text-rose-600">{eventError}</p>}
+                  <button onClick={submitEvent} disabled={eventSaving||!eventForm.title.trim()||!eventForm.date}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 disabled:opacity-40 transition-colors">
+                    {eventSaving?"Adding...":<><Plus className="w-4 h-4"/>Add to calendar</>}
+                  </button>
+                </div>
+              )}
+            </div>
+            )}
             {/* Upcoming events (beyond planning week) */}
             {upcomingEvents.length>0&&(
               <div>
