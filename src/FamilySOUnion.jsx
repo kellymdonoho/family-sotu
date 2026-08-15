@@ -1072,8 +1072,8 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                           {/* Carter — Daycare */}
                           <div className="bg-blue-50/50 rounded-xl p-2.5 space-y-1.5">
                             <p className="text-xs font-bold text-blue-700">Carter — Daycare</p>
-                            {renderToggle("Drop-off", DROPOFF_OPTIONS.filter(o=>o!=="Nana & Grumpa"), "carter", "dropoff", PERSON_COLOR)}
-                            {renderToggle("Pick-up", PICKUP_OPTIONS.filter(o=>o!=="Nana & Grumpa"), "carter", "pickup", PERSON_COLOR)}
+                            {renderToggle("Drop-off", DROPOFF_OPTIONS, "carter", "dropoff", PERSON_COLOR)}
+                            {renderToggle("Pick-up", PICKUP_OPTIONS, "carter", "pickup", PERSON_COLOR)}
                           </div>
                         </div>
                       )}
