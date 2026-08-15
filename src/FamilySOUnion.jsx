@@ -81,7 +81,7 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 // Lily is in kindergarten (M-Th 8:30–3:30, Fri 9:15–3:30).
 // Carter is in daycare.
 // Each weekday, both parents (and Nana & Grumpa) coordinate who handles each leg.
-const K_SCHEDULE = { 1:"8:30–3:27", 2:"8:30–3:27", 3:"8:30–3:27", 4:"8:30–3:27", 5:"9:15–3:27" };
+const K_SCHEDULE = { 1:"8:30 AM–3:27 PM", 2:"8:30 AM–3:27 PM", 3:"8:30 AM–3:27 PM", 4:"8:30 AM–3:27 PM", 5:"9:15 AM–3:27 PM" };
 const DAYCARE_HOURS = "6:30 AM–6:00 PM";
 const DROPOFF_OPTIONS = ["Kelly", "Kevin", "Nana & Grumpa"];
 const PICKUP_OPTIONS  = ["Kelly", "Kevin", "Nana & Grumpa"];
