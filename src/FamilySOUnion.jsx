@@ -82,6 +82,7 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 // Carter is in daycare.
 // Each weekday, both parents (and Nana & Grumpa) coordinate who handles each leg.
 const K_SCHEDULE = { 1:"8:30–3:27", 2:"8:30–3:27", 3:"8:30–3:27", 4:"8:30–3:27", 5:"9:15–3:27" };
+const DAYCARE_HOURS = "6:30 AM–6:00 PM";
 const DROPOFF_OPTIONS = ["Kelly", "Kevin", "Nana & Grumpa"];
 const PICKUP_OPTIONS  = ["Kelly", "Kevin", "Nana & Grumpa"];
 const AFTER_K_OPTIONS = ["Us", "Nana & Grumpa", "BASE", "Activity"];
@@ -1071,7 +1072,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                           </div>
                           {/* Carter — Daycare */}
                           <div className="bg-blue-50/50 rounded-xl p-2.5 space-y-1.5">
-                            <p className="text-xs font-bold text-blue-700">Carter — Daycare</p>
+                            <p className="text-xs font-bold text-blue-700">Carter — Daycare <span className="font-medium text-stone-400">{DAYCARE_HOURS}</span></p>
                             {renderToggle("Drop-off", DROPOFF_OPTIONS, "carter", "dropoff", PERSON_COLOR)}
                             {renderToggle("Pick-up", PICKUP_OPTIONS, "carter", "pickup", PERSON_COLOR)}
                           </div>
