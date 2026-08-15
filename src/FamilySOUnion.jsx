@@ -875,51 +875,9 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                 ))}
               </div>
             </div>
-            <div>
-              <SectionHeader icon={ClipboardCheck} title="What we committed to last week" count={lastWeekDecisions.length+" items"}/>
-              {lastWeekDecisions.length===0?(
-                <div className="bg-stone-50 border border-dashed border-stone-300 rounded-2xl p-5 text-center">
-                  <p className="text-sm text-stone-500 font-medium">No decisions logged from last meeting.</p>
-                  <p className="text-xs text-stone-400 mt-1">Log decisions in This Week - they appear here next Sunday.</p>
-                </div>
-              ):(
-                <div className="space-y-2">
-                  {lastWeekDecisions.map(dec=>(
-                    <div key={dec.id} className={"bg-white border rounded-2xl p-3.5 shadow-sm "+(dec.status==="done"?"border-emerald-200 opacity-60":"border-stone-200")}>
-                      <div className="flex items-start gap-2 mb-2.5 flex-wrap">
-                        <p className={"text-sm text-slate-900 flex-1 "+(dec.status==="done"?"line-through":"")}>{dec.text}</p>
-                        <OwnerBadge value={dec.owner}/>
-                      </div>
-                      <div className="flex gap-2 flex-wrap">
-                        <button onClick={()=>updateDecision(dec.id,{status:"done"},true)}
-                          className={"text-xs px-3 py-1.5 rounded-full font-semibold border transition-colors "+(dec.status==="done"?"bg-emerald-500 text-white border-emerald-500":"border-stone-200 text-stone-500 hover:bg-emerald-50 hover:text-emerald-700")}>
-                          Done
-                        </button>
-                        <button onClick={()=>carryForward(dec)}
-                          className={"text-xs px-3 py-1.5 rounded-full font-semibold border transition-colors "+(dec.status==="carried"?"bg-amber-500 text-white border-amber-500":"border-stone-200 text-stone-500 hover:bg-amber-50 hover:text-amber-700")}>
-                          Carry forward
-                        </button>
-                        {dec.status!=="open"&&(
-                          <button onClick={()=>updateDecision(dec.id,{status:"open",carriedToWeek:undefined},true)}
-                            className="text-xs px-3 py-1.5 rounded-full border border-stone-200 text-stone-400 hover:text-stone-600 transition-colors">
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {carriedInItems.length>0&&(
-                <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                  <ArrowRight className="w-3.5 h-3.5 flex-shrink-0"/>
-                  {carriedInItems.length} item{carriedInItems.length!==1?"s":""} carried into This Week
-                </div>
-              )}
-            </div>
             <button onClick={()=>visitTab("align")}
               className="w-full flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white text-sm font-bold rounded-2xl hover:bg-slate-800 transition-colors">
-              Next: Align on this week <ArrowRight className="w-4 h-4"/>
+              Open this week's calendar <ArrowRight className="w-4 h-4"/>
             </button>
           </div>
         )}
@@ -927,10 +885,35 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
         {/* ALIGN */}
         {tab==="align"&&(
           <div className="space-y-5">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Weekly logistics</p>
+                <h2 className="text-xl font-bold text-slate-900">
+                  {planningWeek[0].dateStr}–{planningWeek[6].dateStr}
+                </h2>
+                <p className="text-sm text-stone-500 mt-1">Coordinate the week at a glance.</p>
+              </div>
+              <span className="text-xs font-semibold text-stone-400 whitespace-nowrap">
+                {logisticsSet}/5 weekdays set
+              </span>
+            </div>
             {conflictDays.length>0&&(
-              <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-300 rounded-2xl px-4 py-3">
-                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0"/>
-                <p className="text-sm font-semibold text-amber-800">{conflictDays.length} weekday{conflictDays.length>1?"s":""} with incomplete drop-off / pick-up assignments</p>
+              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0"/>
+                  <p className="text-sm font-bold text-amber-800">{conflictDays.length} coverage gap{conflictDays.length>1?"s":""} this week</p>
+                </div>
+                <div className="space-y-1.5">
+                  {planningWeek.filter(day=>conflictDays.includes(day.key)).map(day=>(
+                    <a key={day.key} href={"#day-"+day.key}
+                      className="flex items-center gap-2 text-xs font-semibold text-amber-800 hover:text-amber-950">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"/>
+                      <span className="w-8">{day.label}</span>
+                      <span className="font-normal">Drop-off, after-care, or pick-up needs an assignment</span>
+                      <ArrowRight className="w-3 h-3 ml-auto flex-shrink-0"/>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
             {/* Add an event to the family calendar — parents only */}
@@ -1021,7 +1004,7 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                   };
 
                   return (
-                    <div key={day.key} className={"bg-white border rounded-2xl p-3.5 shadow-sm "+(isConflict?"border-amber-300":"border-stone-200")}>
+                    <div id={"day-"+day.key} key={day.key} className={"scroll-mt-4 bg-white border rounded-2xl p-3.5 shadow-sm "+(isConflict?"border-amber-300":"border-stone-200")}>
                       <div className="flex items-center gap-2 mb-2.5 flex-wrap">
                         <span className="text-sm font-bold text-slate-900 w-8">{day.label}</span>
                         <span className="text-xs text-stone-400">{day.dateStr}</span>
@@ -1148,64 +1131,11 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
               </div>
             )}
 
-            {!isCalendarOnly && (<>
-            <div>
-              <SectionHeader icon={AlertTriangle} title="Action items"/>
-              <div className="space-y-2">
-                {ACTION_ITEMS.map(item=>(
-                  <div key={item.id} className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-sm">
-                    <p className="text-sm font-semibold text-slate-900 mb-1">{item.title}</p>
-                    <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full inline-block mb-2">This week</span>
-                    <OwnerToggle value={ownership[item.id]} onChange={v=>saveOwnership(item.id,v)}/>
-                  </div>
-                ))}
-                {carriedInItems.map(dec=>(
-                  <div key={dec.id} className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5">
-                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">Carried from last week</p>
-                    <p className="text-sm text-slate-900 mb-2.5">{dec.text}</p>
-                    <OwnerToggle value={dec.owner} onChange={v=>updateDecision(dec.id,{owner:v},true)}/>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <SectionHeader icon={Edit} title="Log decisions" count={thisWeekDecisions.length+" logged"}/>
-              <div className="bg-white border border-stone-200 rounded-2xl p-3.5 mb-3 shadow-sm">
-                <textarea value={newDecText} onChange={e=>setNewDecText(e.target.value)}
-                  placeholder="What did you decide? e.g. Kevin does school pickup Tue & Thu this week"
-                  className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-slate-400 text-slate-900 bg-white mb-2.5"
-                  style={{height:60}}/>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <OwnerToggle value={newDecOwner} onChange={setNewDecOwner}/>
-                  <button onClick={addDecision} disabled={!newDecText.trim()}
-                    className="ml-auto flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    <Plus className="w-3.5 h-3.5"/> Log it
-                  </button>
-                </div>
-              </div>
-              {thisWeekDecisions.length>0&&(
-                <div className="space-y-2">
-                  {thisWeekDecisions.map(dec=>(
-                    <div key={dec.id} className="bg-white border border-stone-200 rounded-2xl p-3 shadow-sm flex items-start gap-2 flex-wrap">
-                      <p className="text-sm text-slate-900 flex-1">{dec.text}</p>
-                      <OwnerBadge value={dec.owner}/>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <SectionHeader icon={MessageSquare} title="Parking lot"/>
-              <textarea value={parking||""} onChange={e=>{ setParking(e.target.value); persist("parking",e.target.value); }}
-                placeholder="Topics that came up but are not urgent..."
-                className="w-full text-sm border border-stone-200 rounded-2xl px-4 py-3 resize-none focus:outline-none focus:border-slate-400 text-slate-900 bg-white shadow-sm"
-                style={{height:80}}/>
-            </div>
-            <button onClick={()=>visitTab("plan")}
-              className="w-full flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white text-sm font-bold rounded-2xl hover:bg-slate-800 transition-colors">
-              Next: Plan <ArrowRight className="w-4 h-4"/>
-            </button>
-            </>
+            {!isCalendarOnly && (
+              <button onClick={()=>visitTab("plan")}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white text-sm font-bold rounded-2xl hover:bg-slate-800 transition-colors">
+                Continue to meal planning <ArrowRight className="w-4 h-4"/>
+              </button>
             )}
           </div>
         )}
@@ -1684,7 +1614,6 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
                 </div>
                 <div className="bg-white/10 rounded-xl p-3.5 mb-4 space-y-2">
                   <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">This meeting</p>
-                  <p className="text-sm text-stone-200">{thisWeekDecisions.length} decision{thisWeekDecisions.length!==1?"s":""} logged</p>
                   <p className="text-sm text-stone-200">{mealsPlanned} of 7 dinners planned</p>
                   {Object.keys(groceryList).length>0&&<p className="text-sm text-stone-200">Grocery list ready ({groceryAllItems.length} items)</p>}
                   <p className="text-sm text-stone-200">{logisticsSet} of 5 weekdays with drop-off / pick-up set</p>
