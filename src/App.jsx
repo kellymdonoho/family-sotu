@@ -24,8 +24,8 @@ function getRole(email) {
   return USER_ROLES[email] || null;
 }
 
-async function saveTokenToFirestore(userId, token) {
-  await setDoc(doc(db, "fcm_tokens", userId), { token, updatedAt: new Date().toISOString() });
+async function saveTokenToFirestore(userId, token, email) {
+  await setDoc(doc(db, "fcm_tokens", userId), { token, email, updatedAt: new Date().toISOString() });
 }
 
 export default function App() {
@@ -47,7 +47,7 @@ export default function App() {
       if (u) {
         const role = getRole(u.email);
         setUserRole(role);
-        if (role) checkNotificationStatus(u.uid);
+        if (role) checkNotificationStatus(u.uid, u.email);
         // Parents sync the role map to Firestore so security rules can enforce it
         if (role === "parent") {
           setDoc(doc(db, "meta", "roles"), USER_ROLES, { merge: true })
@@ -79,12 +79,12 @@ export default function App() {
     return unsub;
   }, [user, userRole]);
 
-  const checkNotificationStatus = async (uid) => {
+  const checkNotificationStatus = async (uid, email) => {
     if (!("Notification" in window)) { setNotifStatus("unsupported"); return; }
     if (Notification.permission === "granted") {
       setNotifStatus("granted");
       const token = await requestNotificationPermission(VAPID_KEY);
-      if (token) await saveTokenToFirestore(uid, token);
+      if (token) await saveTokenToFirestore(uid, token, email);
     } else if (Notification.permission === "denied") {
       setNotifStatus("denied");
     } else {
@@ -95,7 +95,7 @@ export default function App() {
   const enableNotifications = async () => {
     if (!user || !VAPID_KEY) return;
     const token = await requestNotificationPermission(VAPID_KEY);
-    if (token) { await saveTokenToFirestore(user.uid, token); setNotifStatus("granted"); }
+    if (token) { await saveTokenToFirestore(user.uid, token, user.email); setNotifStatus("granted"); }
     else setNotifStatus(Notification.permission === "denied" ? "denied" : "prompt");
   };
 

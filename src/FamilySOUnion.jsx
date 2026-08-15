@@ -456,16 +456,20 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
   const groceryCheckedCount = groceryAllItems.filter(k=>groceryChecked[k]).length;
   const groceryPct        = groceryAllItems.length?Math.round(groceryCheckedCount/groceryAllItems.length*100):0;
 
-  // Record a completed meeting once per week, and grow the streak
+  // Record a completed meeting once per week, and grow the streak.
+  // Also writes meetingCompletedAt to trigger the Lily pick-up reminder Cloud Function.
+  // Calendar-only users never trigger this (they only visit one tab by design).
   useEffect(()=>{
-    if(!allTabsVisited || streakRecorded.current || streak.lastCompletedWeek===weekId) return;
+    if(isCalendarOnly || !allTabsVisited || streakRecorded.current || streak.lastCompletedWeek===weekId) return;
     streakRecorded.current = true;
     const prevWeek = subtractDays(weekId,7);
     const count = streak.lastCompletedWeek===prevWeek ? (streak.count||0)+1 : 1;
     const updated = { count, best:Math.max(streak.best||0,count), lastCompletedWeek:weekId };
     setStreak(updated);
     setDoc(doc(db,"meta","streak"),updated,{merge:true}).catch(e=>console.error(e));
-  },[allTabsVisited,streak,weekId,db]);
+    // Signal the Cloud Function to send pick-up reminders
+    setDoc(doc(db,"sou",weekId),{meetingCompletedAt:new Date().toISOString()},{merge:true}).catch(e=>console.error(e));
+  },[allTabsVisited,streak,weekId,db,isCalendarOnly]);
 
   // ── HANDLERS ──────────────────────────────────────────────────────────────
   const visitTab = t=>{ setTab(t); setTabsVisited(p=>new Set([...p,t])); };

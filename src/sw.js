@@ -18,7 +18,11 @@ const app = initializeApp({
 const messaging = getMessaging(app);
 
 onBackgroundMessage(messaging, (payload) => {
-  const { title, body } = payload.notification ?? {};
+  // FCM automatically displays notifications when a "notification" payload is
+  // present. Only handle data-only messages here to avoid duplicate notifications.
+  if (payload.notification) return;
+
+  const { title, body } = payload.data ?? {};
   if (!title) return;
   self.registration.showNotification(title, {
     body,
