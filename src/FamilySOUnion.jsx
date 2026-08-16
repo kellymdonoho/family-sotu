@@ -512,14 +512,12 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
     const childLog = dayLog[child] || {};
     // Toggle off if clicking the same value
     const newVal = childLog[field] === val ? null : val;
-    const u = {
-      ...logistics,
-      [dateKey]: {
-        ...dayLog,
-        [child]: { ...childLog, [field]: newVal },
-      },
-    };
-    setLogistics(u); await persist("logistics",u);
+    setLogistics(prev=>{
+      const prevDay=prev[dateKey]||{};
+      const prevChild=prevDay[child]||{};
+      return {...prev,[dateKey]:{...prevDay,[child]:{...prevChild,[field]:newVal}}};
+    });
+    await setDoc(doc(db,"sou",weekId),{logistics:{[dateKey]:{[child]:{[field]:newVal}}}},{merge:true});
   };
 
   // Set a logistics field without toggling (used for text inputs like activity name)
@@ -533,7 +531,8 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
         [child]: { ...childLog, [field]: val },
       },
     };
-    setLogistics(u); await persist("logistics",u);
+    setLogistics(u);
+    await setDoc(doc(db,"sou",weekId),{logistics:{[dateKey]:{[child]:{[field]:val}}}},{merge:true});
   };
 
   // Assign a person to a calendar event (e.g. "Swim with Grace" → Kelly).
@@ -546,7 +545,8 @@ export default function FamilySOUnion({ db, user, role, onSignOut }) {
       ...logistics,
       [dateKey]: { ...dayLog, eventOwners: { ...owners, [key]: owners[key]===who ? null : who } },
     };
-    setLogistics(u); await persist("logistics",u);
+    setLogistics(u);
+    await setDoc(doc(db,"sou",weekId),{logistics:{[dateKey]:{eventOwners:{[key]:owners[key]===who ? null : who}}}},{merge:true});
   };
 
   const saveOwnership = async(itemId,val)=>{
