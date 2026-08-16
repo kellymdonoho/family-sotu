@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isFamilyMember() {
+      return signedIn() && request.auth.token.email in [
+        "kellymdonoho@gmail.com",
+        "kdonoho1@gmail.com",
+        "donna_durham@yahoo.com"
+      ];
+    }
+
+    function isParent() {
+      return signedIn() && request.auth.token.email in [
+        "kellymdonoho@gmail.com",
+        "kdonoho1@gmail.com"
+      ];
+    }
+
+    match /{document=**} {
+      allow read: if isFamilyMember();
+      allow write: if isParent();
+    }
+  }
+}
